@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>deepcore smoke</title>
+    <link rel="stylesheet" href="../styles/game.css" />
+    <style>
+      /* The canvas is present so the renderer has a real context to draw into,
+         but it is off-screen: this page reports text, not pixels. */
+      #game { position: fixed; left: -2000px; top: 0; }
+      #out { padding: 16px; font: 12px/1.5 monospace; color: #e8eef8; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <!--
+      The browser harness.
+
+      tests/selftest.mjs proves the simulation is correct in Node, but Node has
+      no canvas, no DOM and no Web Audio, so it cannot prove the page boots. A
+      single bad import path, a null 2D context or a throwing render call is
+      invisible to Node and fatal in the browser.
+
+      So this page imports every module the game imports, builds the real atlas,
+      draws real frames into a real canvas, mounts the real HUD, opens every
+      menu, plays every sound cue, and drills a real tunnel - then writes the
+      result into #out, which tools/smoke.mjs reads back with --dump-dom.
+    -->
+    <pre id="out">running</pre>
+    <canvas id="game"></canvas>
+    <div id="app"></div>
+
+    <script type="module">
+      const lines = [];
+      const log = (s) => lines.push(s);
+      /**
+       * A passing check that has something worth saying.
+       *
+       * Checks must not return a bare string to mean "pass, with a note": a
+       * string is the failure channel, and conflating the two makes a harness
+       * that reports failures as passes. This wraps the note in a shape `check`
+       * can tell apart from a reason for failing.
+       */
+      const ok = (note) => ({ ok: true, note });
+      /** Awaits the body, so an async check reports its real result rather than
+          a truthy Promise. */
+      const check = async (name, fn) => {
+        try {
+          const v = await fn();
+          if (v === true) log(`PASS  ${name}`);
+          else if (v === false) log(`FAIL  ${name}`);
+          else if (v && v.ok) log(`PASS  ${name} -> ${v.note}`);
+          else log(`FAIL  ${name} -> ${String(v)}`);
+        } catch (e) {
+          log(`FAIL  ${name} (${e && e.message ? e.message : e})`);
+        }
+      };
+
+      window.addEventListener('error', (e) => log(`FAIL  window.onerror: ${e.message}`));
+      window.addEventListener('unhandledrejection', (e) => log(`FAIL  unhandled rejection: ${e.reason}`));
+
+      function finish() {
+        document.getElementById('out').textContent = lines.join('\n');
+        try { fetch('/__result__/smoke%20done'); } catch { /* the beacon is optional */ }
+      }
+
+      try {
+        /* ---------- imports ---------- */
+        const names = [
+          'config', 'sim/rng', 'sim/world', 'sim/physics', 'sim/game', 'sim/save',
+          'render/camera', 'render/palette', 'render/atlas', 'render/world',
+          'render/ship', 'render/fx', 'hud', 'menus', 'input', 'audio',
+        ];
+        const mods = {};
+        for (const name of names) {
+          try {
+            mods[name] = await import(`../src/${name}.js`);
+            log(`PASS  import ${name}.js`);
+          } catch (e) {
+            log(`FAIL  import ${name}.js -> ${e.message}`);
+          }
+        }
+
+        const G = mods['sim/game'];
+        const C = mods['render/camera'];
+        const AT = mods['render/atlas'];
+        const RW = mods['render/world'];
+        const RS = mods['render/ship'];
+        const FX = mods['render/fx'];
+        const HUD = mods['hud'];
+        const ME = mods['menus'];
+        const IN = mods['input'];
+        const SAVE = mods['sim/save'];
+        // ROWS lives in config, not in the world module: reading `W.ROWS` here
+        // silently produced NaN and made the deep-frame check blame the renderer
+        // for a bad coordinate.
+        const CFG = mods.config;
+
+        if (!G || !C || !AT || !RW || !RS || !FX || !HUD || !ME || !IN) {
+          log('FAIL  HARNESS CRASH: a required module did not import');
+          finish();
+        } else {
+
+        /* ---------- the atlas ---------- */
+        let atlas = null;
+        await check('buildAtlas produces a full set of correctly sized sprites', () => {
+          atlas = AT.buildAtlas();
+          if (!atlas.rock.length) return 'no rock sprites';
+          const bad = atlas.rock.findIndex((c) => !c || c.width !== 32 * AT.SS);
+          if (bad >= 0) return `rock sprite ${bad} is missing or the wrong size`;
+          if (atlas.ore.size < 10) return `only ${atlas.ore.size} ore sprites`;
+          for (const [, variants] of atlas.ore) {
+            if (variants.length !== 4) return 'an ore has the wrong number of variants';
+          }
+          if (atlas.crack.length !== 4) return 'wrong number of crack overlays';
+          return true;
+        });
+
+        /* ---------- rendering into a real context ---------- */
+        const canvas = document.getElementById('game');
+        canvas.width = 800;
+        canvas.height = 500;
+        const ctx = canvas.getContext('2d');
+        const state = G.createState(4242);
+        const cam = C.createCamera(800, 500);
+        C.updateCamera(cam, state.ship, 0.016);
+        const origin = C.camOrigin(cam);
+        const layer = RW.createLightLayer();
+
+        await check('a full world frame draws without throwing', () => {
+          RW.drawSky(ctx, cam, origin, 800, 500);
+          RW.drawSurface(ctx, origin, 0);
+          RW.drawTiles(ctx, state.world, origin, 800, 500, atlas);
+          RW.drawOreGlow(ctx, state.world, origin, 800, 500, 0);
+          RW.drawNatas(ctx, origin, 0);
+          RS.drawShip(ctx, state, origin, 0, 1.2);
+          FX.drawDust(ctx, FX.createFx(), origin);
+          FX.drawPops(ctx, state, origin);
+          FX.drawVignette(ctx, 800, 500, state.depth, 0, 0);
+          FX.drawCrt(ctx, 800, 500, 0);
+          return true;
+        });
+
+        await check('lighting composites at the requested size', () => {
+          const lights = RW.collectLights(state.world, origin, 800, 500);
+          const c = RW.drawLighting(layer, 800, 500, origin, state.ship, state.depth, lights, 0);
+          if (!c) return 'no light canvas returned';
+          if (c.width !== 200) return `light canvas is ${c.width}px wide, expected 200`;
+          return true;
+        });
+
+        await check('a frame at the bottom of the mine draws', () => {
+          const deep = G.createState(99);
+          deep.ship.y = (CFG.ROWS - 30) * CFG.TILE;
+          deep.depth = G.depthAt(deep.ship.y);
+          C.updateCamera(cam, deep.ship, 0.5);
+          const o = C.camOrigin(cam);
+          // Each call is named so a failure points at the function rather than
+          // at the whole frame.
+          const steps = {
+            drawTiles: () => RW.drawTiles(ctx, deep.world, o, 800, 500, atlas),
+            drawNatas: () => RW.drawNatas(ctx, o, 1),
+            drawOreGlow: () => RW.drawOreGlow(ctx, deep.world, o, 800, 500, 1),
+            collectLights: () => RW.collectLights(deep.world, o, 800, 500),
+            drawLighting: () => {
+              const lights = RW.collectLights(deep.world, o, 800, 500);
+              return RW.drawLighting(layer, 800, 500, o, deep.ship, deep.depth, lights, 1);
+            },
+            drawVignette: () => FX.drawVignette(ctx, 800, 500, deep.depth, 0, 1),
+          };
+          for (const [name, fn] of Object.entries(steps)) {
+            try {
+              fn();
+            } catch (e) {
+              return `${name} threw: ${e.message}`;
+            }
+          }
+          if (!Number.isFinite(deep.depth)) return 'depth went non-finite';
+          if (!Number.isFinite(o.x) || !Number.isFinite(o.y)) return `origin is ${o.x},${o.y}`;
+          return true;
+        });
+
+        /* ---------- particles ---------- */
+        await check('dust is emitted while drilling and expires afterwards', () => {
+          const fx = FX.createFx();
+          const s = G.createState(5);
+          s.ship.drilling = true;
+          for (let i = 0; i < 200; i += 1) FX.updateFx(fx, s, 1 / 60, origin, 800, 500);
+          if (!fx.dust.length) return 'no dust was emitted while drilling';
+          s.ship.drilling = false;
+          for (let i = 0; i < 400; i += 1) FX.updateFx(fx, s, 1 / 60, origin, 800, 500);
+          if (fx.dust.length > 4) return `${fx.dust.length} dust particles never expired`;
+          return true;
+        });
+
+        /* ---------- the HUD ---------- */
+        await check('the HUD mounts and renders real values', () => {
+          const root = document.getElementById('app');
+          const hud = HUD.createHud(root);
+          for (let i = 0; i < 5; i += 1) hud.update(state, { lowFuel: false, lowHull: false });
+          const cash = root.querySelector('.stat-cash .stat-value');
+          if (!cash) return 'no cash readout in the DOM';
+          if (!cash.textContent.includes('$')) return `cash reads "${cash.textContent}"`;
+          const depth = root.querySelector('.stat-depth .stat-value');
+          if (!depth || !depth.textContent.includes('ft')) return 'no depth readout';
+          if (!root.querySelector('.gauge')) return 'no depth gauge';
+          if (!root.querySelector('.radar')) return 'no radar';
+          if (root.querySelectorAll('.meter').length !== 3) return 'wrong number of meters';
+          hud.toast('hello', 'info', 100);
+          if (!root.querySelector('.toast')) return 'toast did not appear';
+          return true;
+        });
+
+        /* ---------- the menus ---------- */
+        await check('every menu opens and closes', () => {
+          const root = document.getElementById('app');
+          const t = ME.showTitle(root, { onStart() {}, onContinue() {}, hasSave: false, onHelp() {} });
+          if (!root.querySelector('.modal-title')) return 'title did not mount';
+          t.close();
+          if (root.querySelector('.modal-title')) return 'title did not close';
+
+          ME.showHelp(root);
+          if (!root.querySelector('.help-grid')) return 'help did not mount';
+          root.querySelector('.modal-close').click();
+
+          ME.showPause(root, { onResume() {}, onSave() {}, onQuit() {}, muted: false, onToggleSound() {} });
+          if (!root.querySelector('.modal')) return 'pause did not mount';
+          root.querySelector('.modal-close').click();
+
+          ME.showShop(root, state, { onSpend() {}, onClose() {}, initialTab: 'ship' });
+          if (!root.querySelector('.shop')) return 'shop did not mount';
+          if (!root.querySelector('.pane.is-active')) return 'no shop tab is active';
+          const activePanes = root.querySelectorAll('.pane.is-active').length;
+          if (activePanes !== 1) return `${activePanes} shop panes are visible at once`;
+          if (!root.querySelector('.tab.is-active')) return 'no tab is highlighted';
+          root.querySelector('.modal-close').click();
+
+          ME.showEnd(root, state, { won: false, onRestart() {}, onContinue() {} });
+          if (!root.querySelector('.end-stats')) return 'end screen did not mount';
+          root.querySelector('.modal-close').click();
+          return true;
+        });
+
+        await check('the shop spends money and the prices come from the tables', () => {
+          const root = document.getElementById('app');
+          const s = G.createState(1);
+          s.cash = 100000;
+          const before = G.drillPower(s);
+          ME.showShop(root, s, { onSpend() {}, onClose() {}, initialTab: 'ship' });
+          const buy = root.querySelector('.pane.is-active .btn-buy');
+          if (!buy) return 'no buy button rendered';
+          buy.click();
+          if (G.drillPower(s) <= before) return 'buying the first drill changed nothing';
+          root.querySelector('.modal-close').click();
+          return true;
+        });
+
+        /* ---------- input ---------- */
+        await check('keyboard input maps to the sim input shape', () => {
+          const input = IN.createInput(window);
+          const send = (type, code) => window.dispatchEvent(new KeyboardEvent(type, { code }));
+          send('keydown', 'KeyA');
+          send('keydown', 'Space');
+          const held = input.read();
+          if (!held.left) return 'KeyA did not set left';
+          if (!held.drill) return 'Space did not set drill';
+          send('keyup', 'KeyA');
+          send('keyup', 'Space');
+          const released = input.read();
+          if (released.left) return 'KeyA stayed held after keyup';
+          if (released.drill) return 'Space stayed held after keyup';
+          send('keydown', 'KeyE');
+          if (!input.consume('use')) return 'KeyE did not queue the use action';
+          if (input.consume('use')) return 'the use action fired twice';
+          input.destroy();
+          return true;
+        });
+
+        /* ---------- audio ---------- */
+        await check('the audio graph builds and every cue plays', () => {
+          const a = mods.audio.createAudio();
+          if (!a.unlock()) return 'AudioContext unavailable';
+          const cues = ['orePickup', 'holdFull', 'blast', 'gasBurst', 'damage', 'sale',
+            'purchase', 'deny', 'dock', 'teleport', 'death', 'win', 'click', 'alarm'];
+          for (const cue of cues) {
+            if (typeof a[cue] !== 'function') return `missing cue ${cue}`;
+            if (cue === 'orePickup') a[cue](4);
+            else if (cue === 'sale') a[cue](99999);
+            else a[cue]();
+          }
+          a.update(state, 1.4, 0.016);
+          a.setMuted(true);
+          a.setMuted(false);
+          return true;
+        });
+
+        /* ---------- a real session, in the browser ---------- */
+        await check('40 seconds of drilling digs, fills the hold and stays consistent', () => {
+          const s = G.createState(777);
+          const input = { left: 0, right: 0, up: 0, down: 0, drill: 1 };
+          for (let i = 0; i < 60 * 40; i += 1) G.step(s, 1 / 60, input);
+          if (s.stats.dug < 10) return `only dug ${s.stats.dug} tiles in 40s`;
+          if (s.cargoWeight <= 0) return 'nothing in the hold after 40s';
+          if (s.cargoWeight > G.cargoCap(s) + 0.001) return 'the hold overflowed';
+          if (s.ship.fuel < 0) return 'fuel went negative';
+          return true;
+        });
+
+        await check('a save survives a real localStorage round trip', () => {
+          const s = G.createState(31337);
+          for (let i = 0; i < 600; i += 1) {
+            G.step(s, 1 / 60, { left: 0, right: 0, up: 0, down: 0, drill: 1 });
+          }
+          if (!SAVE.saveTo(s)) return 'saveTo reported failure';
+          const back = SAVE.loadFrom();
+          if (!back) return 'loadFrom returned null';
+          if (Math.abs(back.depth - s.depth) > 1e-6) return 'depth changed across the save';
+          if (back.stats.dug !== s.stats.dug) return 'dug count changed across the save';
+          if (back.cargoWeight !== s.cargoWeight) return 'the hold changed across the save';
+          SAVE.clearSave();
+          return true;
+        });
+
+        /* ---------- the page itself ---------- */
+        /* ---------- pixels ----------
+           "Does it look right" is not an assertion, but a few things about the
+           picture are objectively checkable, and they are exactly the things
+           that break silently: the headlight stops working, the depth palette
+           stops changing, the darkness never comes on. These sample the real
+           canvas and assert on the numbers. */
+
+        /** Renders one frame at a depth and returns the pixel data. */
+        const frameAt = (row) => {
+          const s = G.createState(2024);
+          s.ship.x = 12.5 * 32;
+          s.ship.y = row * 32;
+          s.depth = G.depthAt(s.ship.y);
+          const c2 = C.createCamera(800, 500);
+          c2.x = s.ship.x;
+          c2.y = s.ship.y;
+          C.updateCamera(c2, s.ship, 1);
+          const o = C.camOrigin(c2);
+          const lc = RW.createLightLayer();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.fillStyle = '#04060c';
+          ctx.fillRect(0, 0, 800, 500);
+          RW.drawSky(ctx, c2, o, 800, 500);
+          RW.drawSurface(ctx, o, 0);
+          RW.drawTiles(ctx, s.world, o, 800, 500, atlas);
+          RW.drawOreGlow(ctx, s.world, o, 800, 500, 0);
+          RS.drawShip(ctx, s, o, 0, 0);
+          const lights = RW.collectLights(s.world, o, 800, 500);
+          const lc2 = RW.drawLighting(lc, 800, 500, o, s.ship, s.depth, lights, 0);
+          ctx.drawImage(lc2, 0, 0, 800, 500);
+          const data = ctx.getImageData(0, 0, 800, 500).data;
+          return { data, origin: o, state: s };
+        };
+
+        const luma = (data, x, y) => {
+          const i = (y * 800 + x) * 4;
+          return 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+        };
+        const avgLuma = (data) => {
+          let sum = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+          }
+          return sum / (data.length / 4);
+        };
+        const avgChannel = (data, channel) => {
+          let sum = 0;
+          for (let i = channel; i < data.length; i += 4) sum += data[i];
+          return sum / (data.length / 4);
+        };
+
+        await check('the headlight actually lights the rock around the ship', () => {
+          const { data } = frameAt(60);
+          // Near the ship, mid-screen; far away, near the top-left corner.
+          const near = luma(data, 400, 250);
+          const far = luma(data, 20, 20);
+          if (!(near > far + 4)) return `near ${near.toFixed(1)} vs far ${far.toFixed(1)} - no lighting falloff`;
+          if (near < 12) return `the lit area is black (${near.toFixed(1)}) - the light pass is not punching through`;
+          return ok(`lit ${near.toFixed(1)} vs dark ${far.toFixed(1)}`);
+        });
+
+        await check('the mine gets darker with depth', () => {
+          const shallow = avgLuma(frameAt(20).data);
+          const deep = avgLuma(frameAt(300).data);
+          if (!(deep < shallow * 0.85)) {
+            return `shallow ${shallow.toFixed(1)} vs deep ${deep.toFixed(1)} - darkness is not tracking depth`;
+          }
+          return ok(`shallow ${shallow.toFixed(1)} -> deep ${deep.toFixed(1)}`);
+        });
+
+        await check('the rock changes colour with depth', () => {
+          const shallow = frameAt(20).data;
+          const deep = frameAt(330).data;
+          // The surface rock is warm (red > blue); the deep rock is cold and
+          // dark (blue >= red). If the palette stopped interpolating these
+          // ratios would match.
+          const warmRatio = avgChannel(shallow, 0) / Math.max(1, avgChannel(shallow, 2));
+          const coldRatio = avgChannel(deep, 0) / Math.max(1, avgChannel(deep, 2));
+          if (!(warmRatio > coldRatio + 0.05)) {
+            return `shallow r/b ${warmRatio.toFixed(2)} vs deep ${coldRatio.toFixed(2)} - the palette is flat`;
+          }
+          return ok(`shallow r/b ${warmRatio.toFixed(2)} -> deep ${coldRatio.toFixed(2)}`);
+        });
+
+        await check('ore is visibly brighter than the rock around it', () => {
+          const { data, state: s } = frameAt(120);
+          // Find an ore tile that is on screen and compare it to a rock tile.
+          let orePixels = 0;
+          let oreSum = 0;
+          let rockPixels = 0;
+          let rockSum = 0;
+          for (let y = 20; y < 480; y += 2) {
+            for (let x = 20; x < 780; x += 2) {
+              const i = (y * 800 + x) * 4;
+              const v = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+              if (v > 90) { orePixels += 1; oreSum += v; } else if (v > 4 && v < 60) { rockPixels += 1; rockSum += v; }
+            }
+          }
+          if (!orePixels) return 'nothing on screen is brighter than 90 luma - no ore is standing out';
+          if (!rockPixels) return 'no mid-dark rock pixels found';
+          const oreAvg = oreSum / orePixels;
+          const rockAvg = rockSum / rockPixels;
+          if (!(oreAvg > rockAvg * 1.5)) {
+            return `ore ${oreAvg.toFixed(1)} vs rock ${rockAvg.toFixed(1)} - ore does not pop`;
+          }
+          return ok(`ore ${oreAvg.toFixed(1)} vs rock ${rockAvg.toFixed(1)} (${orePixels} bright px)`);
+        });
+
+        await check('the surface frame contains sky, and the deep frame does not', () => {
+          const surface = frameAt(2).data;
+          const deep = frameAt(300).data;
+          // The sky is blue and bright; the deep mine is neither.
+          const surfaceBlue = avgChannel(surface, 2);
+          const deepBlue = avgChannel(deep, 2);
+          if (!(surfaceBlue > deepBlue + 8)) {
+            return `surface blue ${surfaceBlue.toFixed(1)} vs deep ${deepBlue.toFixed(1)} - no sky above ground`;
+          }
+          return ok(`sky blue ${surfaceBlue.toFixed(1)} vs deep ${deepBlue.toFixed(1)}`);
+        });
+
+        await check('the rendered frame is not blank', () => {
+          const { data } = frameAt(60);
+          const seen = new Set();
+          for (let i = 0; i < data.length; i += 4 * 97) {
+            seen.add(`${data[i] >> 3},${data[i + 1] >> 3},${data[i + 2] >> 3}`);
+          }
+          if (seen.size < 8) return `only ${seen.size} distinct colours - the frame is flat`;
+          return ok(`${seen.size} distinct colours sampled`);
+        });
+
+        await check('index.html wires the canvas and the app root', async () => {
+          const html = await (await fetch('../index.html')).text();
+          if (!html.includes('id="game"')) return 'no canvas in index.html';
+          if (!html.includes('id="app"')) return 'no app root in index.html';
+          if (!html.includes('./src/main.js')) return 'main.js is not loaded by index.html';
+          if (!html.includes('./styles/game.css')) return 'game.css is not linked';
+          return true;
+        });
+
+        await check('every stylesheet the game asks for exists', async () => {
+          const res = await fetch('../styles/game.css');
+          if (!res.ok) return `game.css is ${res.status}`;
+          const css = await res.text();
+          for (const sel of ['.hud', '.meter-fill', '.modal-card', '.toast', '.radar', '.gauge']) {
+            if (!css.includes(sel)) return `game.css has no ${sel} rule`;
+          }
+          return true;
+        });
+        }
+      } catch (e) {
+        log(`FAIL  HARNESS CRASH: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e}`);
+      }
+
+      finish();
+    </script>
+  </body>
+</html>

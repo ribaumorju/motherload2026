@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>deepcore boot</title>
+    <link rel="stylesheet" href="../styles/game.css" />
+    <style>
+      #game { position: fixed; left: -3000px; top: 0; }
+      #out { padding: 16px; font: 12px/1.5 monospace; color: #e8eef8; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <!--
+      Boots the real game.
+
+      tools/smoke.html tests the game's parts: the sim, the atlas, the renderer,
+      the HUD, the menus. This tests the thing those parts are wired into -
+      src/main.js - by loading it for real and driving it through the hook it
+      exposes on `globalThis`.
+
+      It is the only check that would catch a mistake in the wiring itself: the
+      loop not running, the fixed-timestep accumulator never advancing, the HUD
+      never updating, autosave never firing. Every one of those is invisible to
+      a test of the modules in isolation and fatal in the game.
+    -->
+    <pre id="out">booting</pre>
+    <canvas id="game"></canvas>
+    <div id="app"></div>
+
+    <script type="module">
+      const lines = [];
+      // Written through to the DOM on every line, not buffered until the end:
+      // if a check hangs, the last line printed is where it hung.
+      const out = document.getElementById('out');
+      const log = (s) => {
+        lines.push(s);
+        out.textContent = lines.join('\n');
+      };
+      /**
+       * A passing check that has something worth saying. A bare string is the
+       * failure channel, so a note has to be wrapped to be told apart from a
+       * reason for failing.
+       */
+      const ok = (note) => ({ ok: true, note });
+
+      /** Awaits the body, so an async check reports its real result rather than
+          a truthy Promise. */
+      const check = async (name, fn) => {
+        try {
+          const v = await fn();
+          if (v === true) log(`PASS  ${name}`);
+          else if (v === false) log(`FAIL  ${name}`);
+          else if (v && v.ok) log(`PASS  ${name} -> ${v.note}`);
+          else log(`FAIL  ${name} -> ${String(v)}`);
+        } catch (e) {
+          log(`FAIL  ${name} (${e && e.message ? e.message : e})`);
+        }
+      };
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      /**
+       * Drives the real loop body for `n` frames of game time.
+       *
+       * `requestAnimationFrame` is the right scheduler and it is what runs in a
+       * browser, but it does not fire under `--headless --dump-dom`, so the
+       * loop is stepped directly through the hook main.js exposes for exactly
+       * this. The clock is advanced by a fixed 16ms per frame so the run is
+       * deterministic rather than dependent on how fast Chrome happens to be.
+       */
+      const FRAME_MS = 1000 / 60;
+      // Starts on the same clock main.js uses for `lastFrame`, or the first
+      // delta would be hugely negative and the loop would run backwards.
+      let clock = performance.now();
+      const frames = (n, api) => {
+        for (let i = 0; i < n; i += 1) {
+          clock += FRAME_MS;
+          api.tick(clock);
+        }
+      };
+
+      window.addEventListener('error', (e) => log(`FAIL  window.onerror: ${e.message}`));
+      window.addEventListener('unhandledrejection', (e) => log(`FAIL  unhandled rejection: ${e.reason}`));
+
+      function finish() {
+        out.textContent = lines.join('\n');
+        try { fetch('/__result__/boot%20done'); } catch { /* optional */ }
+      }
+
+      try {
+        // Importing main.js is the test: it boots, builds the atlas, mounts the
+        // HUD and shows the title screen as a side effect of loading.
+        await import('../src/main.js');
+        await wait(120);
+
+        await check('main.js boots and exposes its hook', () => {
+          if (!globalThis.__DEEPCORE__) return 'no __DEEPCORE__ hook';
+          return true;
+        });
+
+        const api = globalThis.__DEEPCORE__;
+
+        await check('the title screen is on screen before a game starts', () => {
+          if (!document.querySelector('.modal-title')) return 'no title screen';
+          if (!document.querySelector('.title-name')) return 'no title text';
+          if (api.state !== null) return 'a game started on its own';
+          return true;
+        });
+
+        await check('the HUD is mounted from the start', () => {
+          for (const sel of ['.hud', '.hud-meters', '.hud-instruments', '.gauge', '.radar']) {
+            if (!document.querySelector(sel)) return `no ${sel}`;
+          }
+          return true;
+        });
+
+        await check('starting a new game creates a live state', () => {
+          api.startNew();
+          const s = api.state;
+          if (!s) return 'no state after startNew';
+          if (!s.world) return 'no world in the state';
+          if (s.stats.dug !== 0) return 'a fresh game already has dug tiles';
+          if (!Number.isFinite(s.ship.x) || !Number.isFinite(s.ship.y)) return 'the ship has no position';
+          return true;
+        });
+
+        const before = { ...api.state.ship };
+        frames(90, api);
+
+        await check('the render loop is running and advancing the game', () => {
+          const s = api.state;
+          if (s.time <= 0) return 'game time never advanced - the loop is not stepping';
+          if (s.ship.y === before.y && s.ship.vy === before.vy) return 'the ship never moved';
+          return ok(`advanced to ${s.time.toFixed(2)}s of game time`);
+        });
+
+        await check('the camera followed the ship', () => {
+          const cam = api.camera;
+          if (!cam) return 'no camera';
+          if (!Number.isFinite(cam.x) || !Number.isFinite(cam.y)) return 'the camera went non-finite';
+          const gap = Math.abs(cam.y - api.state.ship.y);
+          if (gap > 400) return `the camera is ${gap.toFixed(0)}px from the ship`;
+          return true;
+        });
+
+        await check('the HUD is showing live values, not placeholders', () => {
+          const cash = document.querySelector('.stat-cash .stat-value');
+          const depth = document.querySelector('.stat-depth .stat-value');
+          if (!cash || !/\$/.test(cash.textContent)) return `cash reads "${cash && cash.textContent}"`;
+          if (!depth || !/ft/.test(depth.textContent)) return 'depth is not formatted';
+          const fill = document.querySelector('.bar-fuel .meter-fill');
+          if (!fill) return 'no fuel bar';
+          const width = parseFloat(fill.style.width || '0');
+          if (!(width > 0)) return `the fuel bar is empty on a fresh game (width "${fill.style.width}")`;
+          return ok(`cash ${cash.textContent}, depth ${depth.textContent}, fuel bar ${fill.style.width}`);
+        });
+
+        await check('drilling in the running game digs and banks ore', async () => {
+          // Hold the drill by dispatching a real key event, which is the path
+          // the player actually uses, then drive the loop past it.
+          window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+          const dug0 = api.state.stats.dug;
+          frames(180, api);
+          window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
+          const s = api.state;
+          if (s.stats.dug <= dug0) return `dug ${dug0} -> ${s.stats.dug}, nothing happened`;
+          return ok(`dug ${s.stats.dug - dug0} tiles via a real keypress`);
+        });
+
+        await check('the game autosaves on its own timer', () => {
+          // Autosave fires every 12s of loop time; 900 frames is 15s, so this
+          // exercises the timer rather than the manual save path.
+          frames(900, api);
+          const raw = localStorage.getItem('deepcore.save.v1');
+          if (!raw) return 'nothing was written to localStorage after 15s of play';
+          const parsed = JSON.parse(raw);
+          if (!Number.isFinite(parsed.seed)) return 'the autosave has no seed';
+          if (!Array.isArray(parsed.holes)) return 'the autosave has no holes';
+          if (parsed.holes.length === 0) return 'the autosave recorded no holes at all';
+          // `holes` counts every empty tile, which includes the caverns the
+          // generator carves, so `stats.dug` is the number that means digging.
+          if (parsed.stats.dug <= 0) return 'the autosave recorded no digging';
+          return ok(`autosave: ${parsed.stats.dug} tiles dug, ${parsed.holes.length} open tiles`);
+        });
+
+        await check('a save written by the running game reloads into a live state', () => {
+          // Reload through the real path: save, then rebuild from the payload.
+          const before = api.state.stats.dug;
+          api.continueSaved();
+          const after = api.state;
+          if (!after) return 'continueSaved produced no state';
+          if (after.stats.dug !== before) {
+            return `dug count changed across a reload: ${before} -> ${after.stats.dug}`;
+          }
+          if (!Number.isFinite(after.depth)) return 'the reloaded state has no depth';
+          return ok(`reloaded at ${Math.round(after.depth)} ft with ${after.stats.dug} tiles dug`);
+        });
+
+        await check('the canvas has actually been drawn on', () => {
+          // `begin()` resizes the canvas, which clears it, and a real browser
+          // repaints on the next frame. Two ticks stand in for that here.
+          frames(2, api);
+          const canvas = document.getElementById('game');
+          if (!canvas.width || !canvas.height) return 'the canvas has no size';
+          const probe = document.createElement('canvas');
+          probe.width = canvas.width;
+          probe.height = canvas.height;
+          const pctx = probe.getContext('2d');
+          pctx.drawImage(canvas, 0, 0);
+          const data = pctx.getImageData(0, 0, probe.width, probe.height).data;
+          let lit = 0;
+          for (let i = 0; i < data.length; i += 4 * 211) {
+            if (data[i] + data[i + 1] + data[i + 2] > 30) lit += 1;
+          }
+          if (!lit) return 'the canvas is entirely black';
+          return ok(`${lit} lit samples`);
+        });
+      } catch (e) {
+        log(`FAIL  BOOT CRASH: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e}`);
+      }
+
+      finish();
+    </script>
+  </body>
+</html>

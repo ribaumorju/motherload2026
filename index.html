@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Deepcore &middot; 12,800 feet down</title>
+    <meta
+      name="description"
+      content="A modern remake of Motherload: drill 12,800 feet into a procedurally generated mine, haul the ore home, upgrade the pod, and find out what is at the bottom."
+    />
+    <meta name="theme-color" content="#04060c" />
+    <meta name="color-scheme" content="dark" />
+
+    <!--
+      Fonts are optional: the CSS falls back to system stacks if this request is
+      blocked, and nothing in the layout depends on them.
+
+      Loaded render-blocking on purpose. The usual async trick keeps CSS off the
+      critical path but delays the @font-face rules past the first paint, so the
+      first paint uses a fallback and every glyph is re-rendered with different
+      metrics when the real font lands. On a dark UI that reads as the whole
+      screen flickering on every refresh.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800;900&family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+    />
+    <link rel="stylesheet" href="./styles/game.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2304060c'/><path d='M50 16 L68 52 L50 86 L32 52 Z' fill='%234dd4ff'/><path d='M50 30 L58 52 L50 74 L42 52 Z' fill='%2304060c'/></svg>"
+    />
+  </head>
+
+  <body>
+    <!--
+      The canvas is the world and nothing else; the whole HUD is DOM on top of
+      it, built by hud.js. Screen readers get the text, the browser gets to lay
+      out the forms, and the canvas gets to be fast.
+    -->
+    <canvas id="game" aria-label="The mine"></canvas>
+
+    <div id="app"></div>
+
+    <noscript>
+      <div class="noscript">
+        <h1>Deepcore</h1>
+        <p>This game needs JavaScript. Turn it on and reload.</p>
+      </div>
+    </noscript>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

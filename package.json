@@ -1,0 +1,19 @@
+{
+  "name": "deepcore",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A browser remake of Motherload. Plain HTML, CSS and JS with no dependencies and no build step.",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node tools/verify.mjs",
+    "test:sim": "node tests/selftest.mjs",
+    "test:browser": "node tools/smoke.mjs",
+    "shots": "node tools/shots.mjs",
+    "balance": "node tools/balance.mjs",
+    "fuel": "node tools/fuelcheck.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

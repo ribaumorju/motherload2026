@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>deepcore shots</title>
+    <link rel="stylesheet" href="../styles/game.css" />
+    <style>
+      /* One viewport per frame, stacked, so a single screenshot captures the
+         game at several depths and the interface at several widths. */
+      body { background: #04060c; margin: 0; padding: 12px; display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); }
+      figure { margin: 0; position: relative; }
+      figure > figcaption {
+        position: absolute; left: 10px; top: 8px; z-index: 5;
+        font: 700 11px/1 monospace; letter-spacing: 0.14em; color: #7fe4ff;
+        background: rgba(4, 6, 12, 0.85); padding: 5px 8px; border-radius: 6px;
+        border: 1px solid rgba(120, 160, 210, 0.2);
+      }
+      .stage { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid rgba(120,160,210,0.18); }
+      .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+      .stage .app { position: absolute; inset: 0; }
+      .wide { grid-column: 1 / -1; }
+    </style>
+  </head>
+  <body>
+    <!--
+      A visual sheet, not a test.
+
+      Each stage is a real render of the real game at a chosen depth, with the
+      real HUD on top. tools/shots.mjs screenshots this page, so the look of the
+      game can be reviewed without playing to 8000 feet to see what it is like
+      down there.
+    -->
+    <script type="module">
+      import { createState, depthAt, step } from '../src/sim/game.js';
+      import { createCamera, resizeCamera, updateCamera, camOrigin } from '../src/render/camera.js';
+      import { buildAtlas } from '../src/render/atlas.js';
+      import {
+        drawSky, drawSurface, drawTiles, drawOreGlow, drawNatas, drawLighting,
+        createLightLayer, collectLights,
+      } from '../src/render/world.js';
+      import { drawShip } from '../src/render/ship.js';
+      import {
+        createFx, updateFx, drawDust, drawBubbles, drawSparks, drawGasClouds,
+        drawPops, drawVignette, drawCrt, spawnOreBurst,
+      } from '../src/render/fx.js';
+      import { createHud } from '../src/hud.js';
+      import { ROWS, SKY_ROWS, TILE, ORES, COLS } from '../src/config.js';
+
+      const atlas = buildAtlas();
+
+      /**
+       * Renders one frame of the game into its own canvas and mounts a real HUD
+       * over it. `opts` picks the depth, the held input, and whether to run the
+       * sim for a while first so the scene has history (dust, ore in the hold).
+       */
+      function stage(title, { row, seconds = 0, input = {}, seed = 7, width = 900, height = 520, wide = false }) {
+        const figure = document.createElement('figure');
+        if (wide) figure.className = 'wide';
+        figure.innerHTML = `<figcaption>${title}</figcaption>`;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'stage';
+        wrap.style.height = `${height}px`;
+        const canvas = document.createElement('canvas');
+        const app = document.createElement('div');
+        app.className = 'app';
+        wrap.append(canvas, app);
+        figure.append(wrap);
+        document.body.append(figure);
+
+        const dpr = 2;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        const ctx = canvas.getContext('2d');
+
+        const state = createState(seed);
+        const cam = createCamera(width, height);
+
+        // Park the pod at the requested depth before the sim runs, then let it
+        // settle so the camera and the particles are in a natural state.
+        state.ship.x = (Math.floor(COLS / 2) + 0.5) * TILE;
+        state.ship.y = row * TILE;
+        state.depth = depthAt(state.ship.y);
+        cam.x = state.ship.x;
+        cam.y = state.ship.y;
+        updateCamera(cam, state.ship, 1);
+
+        const held = { left: 0, right: 0, up: 0, down: 0, drill: 0, ...input };
+        if (seconds > 0) {
+          for (let i = 0; i < seconds * 60; i += 1) step(state, 1 / 60, held);
+        }
+
+        const fx = createFx();
+        for (let i = 0; i < 90; i += 1) updateFx(fx, state, 1 / 60, camOrigin(cam), width, height);
+
+        // Some scenes want a hand-placed ore burst so the pop text is visible.
+        if (state.cargoWeight > 0) {
+          const ore = ORES[Math.min(ORES.length - 1, Math.floor(state.depth / 2000))];
+          spawnOreBurst(state, Math.floor(state.ship.x / TILE), Math.floor(state.ship.y / TILE) + 1, ore);
+          state.pops.push({
+            x: state.ship.x, y: state.ship.y - 10, life: 0.2, max: 1.5,
+            text: `+${ore.name}`, tone: ore.color, value: ore.value,
+          });
+        }
+
+        updateCamera(cam, state.ship, 0.016);
+        const origin = camOrigin(cam);
+        const layer = createLightLayer();
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = '#04060c';
+        ctx.fillRect(0, 0, width, height);
+
+        drawSky(ctx, cam, origin, width, height);
+        drawSurface(ctx, origin, state.time);
+        drawTiles(ctx, state.world, origin, width, height, atlas);
+        drawOreGlow(ctx, state.world, origin, width, height, state.time);
+        drawNatas(ctx, origin, state.time);
+        drawGasClouds(ctx, state, origin);
+        drawBubbles(ctx, fx, origin);
+        drawDust(ctx, fx, origin);
+        drawShip(ctx, state, origin, state.time, 1.4);
+        drawSparks(ctx, state, origin);
+        drawPops(ctx, state, origin);
+
+        const lights = collectLights(state.world, origin, width, height);
+        const lightCanvas = drawLighting(layer, width, height, origin, state.ship, state.depth, lights, state.time);
+        ctx.drawImage(lightCanvas, 0, 0, width, height);
+
+        drawVignette(ctx, width, height, state.depth, state.ship.heat, state.time);
+        drawCrt(ctx, width, height, state.time);
+
+        // The HUD is sized by its own CSS, so it is told the stage's dimensions.
+        app.style.setProperty('--stage-w', `${width}px`);
+        const hud = createHud(app);
+        hud.update(state, { lowFuel: state.ship.fuel < 6, lowHull: state.ship.hull < 4 });
+        if (state.cargoWeight > 0) {
+          hud.toast(`Found ${ORES[Math.min(ORES.length - 1, Math.floor(state.depth / 2000))].name}`, 'gold', 99999);
+        }
+        return { state, hud };
+      }
+
+      /* ---- the sheet ---- */
+
+      stage('SURFACE — the three facilities, sun low', { row: SKY_ROWS, seconds: 1, width: 1200, height: 560, wide: true });
+      stage('DIGGING — 300 ft, ironium and bronzium', { row: 12, seconds: 5, input: { drill: 1 } });
+      stage('MID MINE — 4,200 ft, platinium and gas', { row: 133, seconds: 6, input: { drill: 1 }, seed: 21 });
+      stage('DEEP — 9,000 ft, emerald and ruby country', { row: 283, seconds: 6, input: { drill: 1 }, seed: 44 });
+      stage('LAVA — 10,500 ft, heat warnings on', { row: 330, seconds: 4, input: { drill: 1 }, seed: 88 });
+      stage('THE BOTTOM — Mr. Natas at 12,600 ft', { row: ROWS - 8, seconds: 2, seed: 3 });
+
+      document.title = 'shots ready';
+      try { fetch('/__result__/shots%20ready'); } catch { /* optional */ }
+    </script>
+  </body>
+</html>
