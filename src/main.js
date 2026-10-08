@@ -24,13 +24,12 @@ import { loadFrom, saveTo, clearSave } from './sim/save.js';
 import { createCamera, resizeCamera, updateCamera, camOrigin } from './render/camera.js';
 import { buildAtlas } from './render/atlas.js';
 import {
-  drawSky, drawSurface, drawTiles, drawOreGlow, drawNatas, drawLighting,
-  createLightLayer, collectLights,
+  drawSky, drawSurface, drawTiles, drawNatas,
 } from './render/world.js';
 import { drawShip, drawHitFlash } from './render/ship.js';
 import {
   createFx, updateFx, drawDust, drawBubbles, drawSparks, drawGasClouds, drawPops,
-  drawVignette, drawFlash, drawCrt, spawnOreBurst,
+  drawHeatTint, drawFlash, drawCrt, spawnOreBurst,
 } from './render/fx.js';
 import { createHud } from './hud.js';
 import { createInput } from './input.js';
@@ -54,7 +53,6 @@ const input = createInput(window);
 const audio = createAudio();
 const fx = createFx();
 const atlas = buildAtlas();
-const lightLayer = createLightLayer();
 
 let state = null;
 let camera = null;
@@ -385,11 +383,9 @@ function tick(now) {
     const hardness = tileHardness(row);
     audio.update(state, hardness, dt);
 
-    if (state.ship.drilling) {
-      drillSpin += dt * (6 + digSpeed(state, row) * 0.06);
-    } else {
-      drillSpin += dt * 1.2;
-    }
+    // Only the flutes move, and only while the bit is biting. A drill that keeps
+    // turning on its own reads as a spinning top rather than as a tool.
+    if (state.ship.drilling) drillSpin += dt * (6 + digSpeed(state, row) * 0.06);
 
     if (state.ended && !endShown) {
       endShown = true;
@@ -448,7 +444,6 @@ function render(origin) {
   drawSky(ctx, camera, origin, vw, vh);
   drawSurface(ctx, origin, state.time);
   drawTiles(ctx, state.world, origin, vw, vh, atlas);
-  drawOreGlow(ctx, state.world, origin, vw, vh, state.time);
   drawNatas(ctx, origin, state.time);
 
   // --- entities ---
@@ -460,16 +455,10 @@ function render(origin) {
   drawHitFlash(ctx, state, origin);
   drawPops(ctx, state, origin);
 
-  // --- light, then the screen effects that sit on top of everything ---
-  const lights = collectLights(state.world, origin, vw, vh);
-  const lightCanvas = drawLighting(
-    lightLayer, vw, vh, origin, state.ship, depth, lights, state.time,
-  );
-  ctx.drawImage(lightCanvas, 0, 0, vw, vh);
-
-  drawVignette(ctx, vw, vh, depth, state.ship.heat, state.time);
+  // --- the screen effects that sit on top of everything ---
+  drawHeatTint(ctx, vw, vh, state.ship.heat, state.time);
   drawFlash(ctx, state.flash, vw, vh, state.ended && state.ended.type === 'won' ? '255, 240, 200' : '255, 200, 160');
-  drawCrt(ctx, vw, vh, state.time);
+  drawCrt(ctx, vw, vh);
 
   if (state.world && paused) {
     ctx.fillStyle = 'rgba(3, 5, 10, 0.35)';

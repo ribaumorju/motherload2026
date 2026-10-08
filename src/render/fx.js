@@ -119,14 +119,12 @@ export function drawDust(ctx, fx, origin) {
 
 export function drawBubbles(ctx, fx, origin) {
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
   for (const p of fx.bubbles) {
     const t = p.life / p.max;
     ctx.globalAlpha = (1 - t) * 0.9;
     ctx.fillStyle = t < 0.4 ? '#ffe08a' : '#ff8a2f';
-    ctx.beginPath();
-    ctx.arc(p.x - origin.x, p.y - origin.y, p.size * (1 - t * 0.5), 0, Math.PI * 2);
-    ctx.fill();
+    const s = Math.max(1, Math.round(p.size * (1 - t * 0.5)));
+    ctx.fillRect(Math.round(p.x - origin.x - s / 2), Math.round(p.y - origin.y - s / 2), s, s);
   }
   ctx.restore();
   ctx.globalAlpha = 1;
@@ -135,14 +133,14 @@ export function drawBubbles(ctx, fx, origin) {
 /** Blast sparks, which the sim creates and this draws. */
 export function drawSparks(ctx, s, origin) {
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
   for (const p of s.sparks) {
     const t = p.life / p.max;
     ctx.globalAlpha = (1 - t) * 0.95;
     ctx.fillStyle = p.tone;
-    ctx.beginPath();
-    ctx.arc(p.x - origin.x, p.y - origin.y, p.size * (1 - t * 0.6), 0, Math.PI * 2);
-    ctx.fill();
+    // Whole-pixel blocks rather than additive dots: additive blending makes
+    // every spark bloom, which is the one thing this style does not do.
+    const size = Math.max(1, Math.round(p.size * (1 - t * 0.6)));
+    ctx.fillRect(Math.round(p.x - origin.x - size / 2), Math.round(p.y - origin.y - size / 2), size, size);
   }
   ctx.restore();
   ctx.globalAlpha = 1;
@@ -151,19 +149,21 @@ export function drawSparks(ctx, s, origin) {
 /** Lingering gas, drawn as a sickly drifting cloud. */
 export function drawGasClouds(ctx, s, origin) {
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
   for (const cloud of s.gasClouds) {
     const t = cloud.life / cloud.max;
     const alpha = (1 - t) * 0.4;
     const r = cloud.r * (0.7 + t * 0.9);
     const x = cloud.x - origin.x;
     const y = cloud.y - origin.y;
-    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, `rgba(150, 255, 110, ${alpha})`);
-    grad.addColorStop(0.6, `rgba(90, 180, 60, ${alpha * 0.5})`);
-    grad.addColorStop(1, 'rgba(60, 120, 40, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    // Two flat discs, the inner one brighter, instead of a soft radial fade.
+    ctx.fillStyle = `rgba(90, 180, 60, ${alpha * 0.6})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(150, 255, 110, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.6, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -185,16 +185,16 @@ export function drawPops(ctx, s, origin) {
     const y = pop.y - origin.y - rise;
     const scale = t < 0.15 ? 0.7 + (t / 0.15) * 0.3 : 1;
     ctx.globalAlpha = clamp(alpha, 0, 1);
-    ctx.font = `700 ${Math.round(12 * scale)}px "JetBrains Mono", ui-monospace, monospace`;
+    ctx.font = `400 ${Math.round(16 * scale)}px "VT323", ui-monospace, monospace`;
     ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.strokeStyle = '#000000';
     ctx.strokeText(pop.text, x, y);
     ctx.fillStyle = pop.tone;
     ctx.fillText(pop.text, x, y);
     if (pop.value) {
-      ctx.font = `600 ${Math.round(10 * scale)}px "JetBrains Mono", ui-monospace, monospace`;
+      ctx.font = `400 ${Math.round(14 * scale)}px "VT323", ui-monospace, monospace`;
       ctx.strokeText(`$${pop.value.toLocaleString()}`, x, y + 13);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.fillStyle = '#ffffff';
       ctx.fillText(`$${pop.value.toLocaleString()}`, x, y + 13);
     }
   }
@@ -203,27 +203,19 @@ export function drawPops(ctx, s, origin) {
 }
 
 /**
- * The vignette and the depth tint. A cold blue vignette in the deep and a warm
- * one near the surface, which does more for the sense of descent than any
- * individual tile does.
+ * The heat warning, while the pod is standing in something hot.
+ *
+ * This was a vignette as well: a cold blue radial darkening that deepened with
+ * depth. That was doing the fog's job a second time, and with the fog gone it
+ * was the only soft edge left on the screen. Now it is just the tint, and it
+ * blinks rather than breathing.
  */
-export function drawVignette(ctx, viewW, viewH, depthFt, heat, time) {
+export function drawHeatTint(ctx, viewW, viewH, heat, time) {
   if (!Number.isFinite(viewW) || !Number.isFinite(viewH) || viewW <= 0 || viewH <= 0) return;
-  const warm = clamp(1 - depthFt / 2000, 0, 1);
-  const grad = ctx.createRadialGradient(
-    viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.25,
-    viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.72,
-  );
-  grad.addColorStop(0, 'rgba(0,0,0,0)');
-  grad.addColorStop(1, warm > 0.5 ? 'rgba(60, 20, 0, 0.45)' : 'rgba(0, 0, 8, 0.6)');
-  ctx.fillStyle = grad;
+  if (heat <= 0.01) return;
+  const pulse = Math.sin(time * 7) > 0 ? 1 : 0.55;
+  ctx.fillStyle = `rgba(255, 60, 20, ${0.16 * heat * pulse})`;
   ctx.fillRect(0, 0, viewW, viewH);
-
-  if (heat > 0.01) {
-    const pulse = 0.6 + 0.4 * Math.sin(time * 7);
-    ctx.fillStyle = `rgba(255, 60, 20, ${0.16 * heat * pulse})`;
-    ctx.fillRect(0, 0, viewW, viewH);
-  }
 }
 
 /** The white flash on a blast or a death. */
@@ -234,24 +226,17 @@ export function drawFlash(ctx, amount, viewW, viewH, tone = '255, 235, 200') {
 }
 
 /**
- * Scanlines and a faint chromatic edge, at very low alpha. This is the "made in
- * 2026" tell that is also a nod to the original's CRT: subtle enough that you
- * stop seeing it after a minute, present enough that the screen feels like a
- * screen.
+ * Scanlines, at very low alpha: a nod to the CRT the original ran on.
+ *
+ * The travelling highlight is gone. It was a nice touch on a screen that had
+ * soft gradients in every corner; against flat colours it just looks like a
+ * smear sliding down the glass.
  */
-export function drawCrt(ctx, viewW, viewH, time) {
+export function drawCrt(ctx, viewW, viewH) {
   ctx.save();
   ctx.globalAlpha = 0.045;
   ctx.fillStyle = '#000';
   for (let y = 0; y < viewH; y += 3) ctx.fillRect(0, y, viewW, 1);
-  ctx.globalAlpha = 0.02;
-  const sweep = ((time * 40) % (viewH + 200)) - 100;
-  const grad = ctx.createLinearGradient(0, sweep - 60, 0, sweep + 60);
-  grad.addColorStop(0, 'rgba(255,255,255,0)');
-  grad.addColorStop(0.5, 'rgba(200, 230, 255, 1)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, sweep - 60, viewW, 120);
   ctx.restore();
   ctx.globalAlpha = 1;
 }

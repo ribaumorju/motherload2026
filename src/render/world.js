@@ -13,75 +13,71 @@
  */
 
 import {
-  TILE, COLS, ROWS, SKY_ROWS, SURFACE_ROW, FACILITIES, ENDGAME, ORE_BY_ID,
+  TILE, COLS, ROWS, SKY_ROWS, SURFACE_ROW, FACILITIES, ENDGAME,
 } from '../config.js';
 import { KIND, kindOf, variantOf, rowDepth } from '../sim/world.js';
 import { hash2 } from '../sim/rng.js';
 import { SS } from './atlas.js';
-import { bandIndexAt, darknessAt, SKY } from './palette.js';
-
-const LIGHT_SCALE = 4; // the light map is rendered at 1/LIGHT_SCALE resolution
+import { bandIndexAt, SKY } from './palette.js';
 
 /* ------------------------------------------------------------------ */
 /* Background                                                          */
 /* ------------------------------------------------------------------ */
 
 /**
- * The sky, with stars that fade out as you descend and a sun that sits low.
- * Drawn only when the view actually includes sky, which for most of the game it
- * does not.
+ * The sky: flat bands, hard stars, a hard sun.
+ *
+ * It used to be a four-stop gradient with a radial bloom around the sun and
+ * stars whose alpha twinkled. Flat bands are what this era of game actually
+ * drew, and it costs six `fillRect`s instead of building two gradients every
+ * frame.
+ *
+ * Drawn only when the view includes sky, which for most of the game it does not.
  */
 export function drawSky(ctx, cam, origin, viewW, viewH) {
   const skyBottom = (SKY_ROWS + 1) * TILE;
   const y = skyBottom - origin.y;
   if (y < 0) return;
 
-  const grad = ctx.createLinearGradient(0, 0, 0, Math.max(y, 1));
-  grad.addColorStop(0, SKY.zenith);
-  grad.addColorStop(0.45, SKY.high);
-  grad.addColorStop(0.8, SKY.low);
-  grad.addColorStop(1, SKY.horizon);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, viewW, y);
+  const bands = [SKY.zenith, SKY.zenith, SKY.high, SKY.high, SKY.low, SKY.horizon];
+  const bandH = y / bands.length;
+  for (let i = 0; i < bands.length; i += 1) {
+    ctx.fillStyle = bands[i];
+    ctx.fillRect(0, Math.floor(i * bandH), viewW, Math.ceil(bandH) + 1);
+  }
 
-  // Stars on a fixed grid, so they do not crawl as the camera moves.
+  // Stars, whole pixels on a fixed grid so they do not crawl as the camera moves.
   ctx.fillStyle = '#ffffff';
   for (let gx = 0; gx < COLS * TILE; gx += 37) {
     for (let gy = -600; gy < skyBottom; gy += 43) {
       const h = hash2(gx, gy);
-      if (h < 0.72) continue;
+      if (h < 0.8) continue;
       const sx = gx + h * 20 - origin.x;
       const sy = gy - origin.y;
-      if (sx < -4 || sx > viewW + 4 || sy < -4 || sy > y) continue;
-      const twinkle = 0.45 + 0.55 * Math.abs(Math.sin(cam.t * 0.8 + h * 12));
-      ctx.globalAlpha = (h - 0.72) * 2.2 * twinkle;
+      if (sx < 0 || sx > viewW || sy < 0 || sy > y) continue;
       const s = h > 0.94 ? 2 : 1;
       ctx.fillRect(sx, sy, s, s);
     }
   }
-  ctx.globalAlpha = 1;
 
-  // The sun, low and warm, with a bloom.
+  // The sun, low and warm: a hard disc with an outline, no bloom.
   const sunX = 15.5 * TILE - origin.x;
   const sunY = skyBottom - 30 - origin.y;
-  const bloom = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 190);
-  bloom.addColorStop(0, 'rgba(255, 230, 176, 0.9)');
-  bloom.addColorStop(0.25, 'rgba(255, 170, 90, 0.35)');
-  bloom.addColorStop(1, 'rgba(255, 120, 60, 0)');
-  ctx.fillStyle = bloom;
-  ctx.fillRect(sunX - 200, sunY - 200, 400, 400);
   ctx.fillStyle = SKY.sun;
   ctx.beginPath();
   ctx.arc(sunX, sunY, 17, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = '#7a4a1c';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
   drawHills(ctx, origin, skyBottom, viewW);
 }
 
 function drawHills(ctx, origin, skyBottom, viewW) {
   const layers = [
-    { parallax: 0.35, height: 130, color: 'rgba(24, 34, 52, 0.85)', step: 210 },
-    { parallax: 0.6, height: 78, color: 'rgba(16, 24, 38, 0.95)', step: 150 },
+    { parallax: 0.35, height: 130, color: '#1c2740', step: 210 },
+    { parallax: 0.6, height: 78, color: '#121a28', step: 150 },
   ];
   for (const layer of layers) {
     const base = skyBottom - origin.y - layer.height;
@@ -89,10 +85,12 @@ function drawHills(ctx, origin, skyBottom, viewW) {
     ctx.beginPath();
     ctx.moveTo(0, skyBottom - origin.y + 2);
     const shift = -origin.x * layer.parallax;
-    for (let x = -layer.step; x <= viewW + layer.step; x += 8) {
+    for (let x = -layer.step; x <= viewW + layer.step; x += 12) {
       const world = x - shift;
       const h = Math.sin(world / layer.step) * 0.5 + Math.sin(world / (layer.step * 0.37)) * 0.5;
-      ctx.lineTo(x, base + h * layer.height * 0.5);
+      // Snapped to 4px steps: a smooth curve up here would be the only soft edge
+      // left on the screen.
+      ctx.lineTo(x, Math.round((base + h * layer.height * 0.5) / 4) * 4);
     }
     ctx.lineTo(viewW, skyBottom - origin.y + 2);
     ctx.closePath();
@@ -105,11 +103,11 @@ export function drawSurface(ctx, origin, time) {
   const y = SURFACE_ROW * TILE - origin.y;
   if (y < -TILE * 2 || y > 4000) return;
 
-  const grad = ctx.createLinearGradient(0, y, 0, y + TILE * 1.2);
-  grad.addColorStop(0, SKY.grassLit);
-  grad.addColorStop(1, SKY.grass);
-  ctx.fillStyle = grad;
+  // Flat grass with a hard shadow line under it, rather than a gradient.
+  ctx.fillStyle = SKY.grassLit;
   ctx.fillRect(0, y, COLS * TILE, TILE * 0.5);
+  ctx.fillStyle = SKY.grass;
+  ctx.fillRect(0, y + TILE * 0.5 - 2, COLS * TILE, 2);
   ctx.fillStyle = SKY.soil;
   ctx.fillRect(0, y + TILE * 0.5, COLS * TILE, TILE * 1.5);
 
@@ -133,54 +131,53 @@ export function drawSurface(ctx, origin, time) {
 }
 
 /**
- * A facility is a small building with a coloured sign and a beacon that pulses.
- * The pulse is the only affordance telling the player "you can dock here", so it
- * is worth the lines.
+ * A facility: a flat box with a hard bevel, a sign band, lit windows, and a
+ * beacon that blinks rather than glows.
+ *
+ * The beacon is the only affordance telling the player "you can dock here", so
+ * it is worth the lines - but it blinks on and off now instead of pulsing
+ * through a soft halo, because a halo is the one thing this style does not have.
  */
 function drawFacility(ctx, facility, origin, groundY, time) {
   const x = facility.col * TILE - origin.x;
-  const w = TILE * 2.6;
-  const h = TILE * 2.1;
-  const top = groundY - h;
+  const w = Math.round(TILE * 2.6);
+  const h = Math.round(TILE * 2.1);
+  const top = Math.round(groundY - h);
+  const left = Math.round(x - w / 2);
 
-  const grad = ctx.createLinearGradient(0, top, 0, groundY);
-  grad.addColorStop(0, '#2b3242');
-  grad.addColorStop(1, '#151a24');
-  ctx.fillStyle = grad;
-  roundRect(ctx, x - w / 2, top, w, h, 4);
-  ctx.fill();
-  ctx.strokeStyle = facility.color;
-  ctx.lineWidth = 1.5;
-  ctx.globalAlpha = 0.8;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+  // Light from the top-left, dark to the bottom-right, black outline: how a
+  // building was drawn before anyone reached for a gradient.
+  ctx.fillStyle = '#2b3242';
+  ctx.fillRect(left, top, w, h);
+  ctx.fillStyle = '#3d4759';
+  ctx.fillRect(left, top, w, 3);
+  ctx.fillRect(left, top, 3, h);
+  ctx.fillStyle = '#151a24';
+  ctx.fillRect(left, top + h - 3, w, 3);
+  ctx.fillRect(left + w - 3, top, 3, h);
+  ctx.strokeStyle = '#0b0d14';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left + 0.5, top + 0.5, w - 1, h - 1);
 
+  // The sign band.
   ctx.fillStyle = facility.color;
-  ctx.globalAlpha = 0.9;
-  roundRect(ctx, x - w / 2 + 4, top + 5, w - 8, 7, 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  ctx.fillRect(left + 4, top + 5, w - 8, 7);
 
-  ctx.fillStyle = 'rgba(255, 236, 180, 0.85)';
-  for (let i = 0; i < 3; i += 1) ctx.fillRect(x - w / 2 + 6 + i * 12, top + 18, 8, 8);
+  // Lit windows.
+  ctx.fillStyle = '#ffecb4';
+  for (let i = 0; i < 3; i += 1) {
+    const wx = left + 6 + i * 12;
+    ctx.fillRect(wx, top + 18, 8, 8);
+    ctx.strokeStyle = '#0b0d14';
+    ctx.strokeRect(wx + 0.5, top + 18.5, 7, 7);
+  }
 
-  const pulse = 0.5 + 0.5 * Math.sin(time * 3 + facility.col);
-  ctx.fillStyle = facility.color;
-  ctx.globalAlpha = 0.35 + pulse * 0.5;
-  ctx.beginPath();
-  ctx.arc(x, top - 7, 3 + pulse * 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  if (Math.sin(time * 3 + facility.col) > 0) {
+    ctx.fillStyle = facility.color;
+    ctx.fillRect(Math.round(x) - 3, top - 9, 6, 6);
+    ctx.strokeStyle = '#0b0d14';
+    ctx.strokeRect(Math.round(x) - 2.5, top - 8.5, 5, 5);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -235,45 +232,6 @@ export function drawTiles(ctx, world, origin, viewW, viewH, atlas) {
   }
 }
 
-/**
- * Faint glow behind every ore tile on screen, so a rich seam is visible at the
- * edge of your light before you can identify it. This is the single biggest
- * reason the mine reads as a place worth exploring rather than as a wall.
- */
-export function drawOreGlow(ctx, world, origin, viewW, viewH, time) {
-  const c0 = Math.max(0, Math.floor(origin.x / TILE));
-  const c1 = Math.min(COLS - 1, Math.ceil((origin.x + viewW) / TILE));
-  const r0 = Math.max(0, Math.floor(origin.y / TILE));
-  const r1 = Math.min(ROWS - 1, Math.ceil((origin.y + viewH) / TILE));
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (let row = r0; row <= r1; row += 1) {
-    for (let col = c0; col <= c1; col += 1) {
-      const i = row * COLS + col;
-      if (kindOf(world.tiles[i]) !== KIND.ORE) continue;
-      const ore = ORE_BY_ID[world.ore[i]];
-      if (!ore) continue;
-      const x = (col + 0.5) * TILE - origin.x;
-      const y = (row + 0.5) * TILE - origin.y;
-      const pulse = 0.75 + 0.25 * Math.sin(time * 2 + hash2(col, row) * 8);
-      const radius = TILE * (0.9 + ore.tier * 0.22);
-      if (!Number.isFinite(radius) || radius <= 0) continue;
-      const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      grad.addColorStop(0, hexA(ore.spark, 0.17 * pulse));
-      grad.addColorStop(1, hexA(ore.spark, 0));
-      ctx.fillStyle = grad;
-      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-    }
-  }
-  ctx.restore();
-}
-
-function hexA(hex, alpha) {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-}
-
 /* ------------------------------------------------------------------ */
 /* Mr. Natas                                                           */
 /* ------------------------------------------------------------------ */
@@ -288,121 +246,48 @@ export function drawNatas(ctx, origin, time) {
   const y = (ENDGAME.row + 0.5) * TILE - origin.y;
   if (x < -400 || x > 4000 || y < -400 || y > 4000) return;
 
-  const pulse = 0.85 + 0.15 * Math.sin(time * 1.4);
-  const glow = ctx.createRadialGradient(x, y, 0, x, y, TILE * 6);
-  glow.addColorStop(0, `rgba(255, 40, 40, ${0.3 * pulse})`);
-  glow.addColorStop(0.5, 'rgba(140, 10, 20, 0.12)');
-  glow.addColorStop(1, 'rgba(80, 0, 10, 0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(x - TILE * 6, y - TILE * 6, TILE * 12, TILE * 12);
+  // A red halo in flat rings, outermost darkest, rather than one soft radial
+  // fade: it reads as drawn light instead of rendered light.
+  for (const ring of [
+    { r: TILE * 6, color: '#150206' },
+    { r: TILE * 3.4, color: '#2b0409' },
+    { r: TILE * 2.2, color: '#4a0810' },
+  ]) {
+    ctx.fillStyle = ring.color;
+    ctx.beginPath();
+    ctx.arc(x, y, ring.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (Math.sin(time * 1.4) > 0) {
+    ctx.fillStyle = '#5e0a14';
+    ctx.beginPath();
+    ctx.arc(x, y, TILE * 1.75, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  ctx.fillStyle = '#0a0406';
+  ctx.fillStyle = '#080305';
   ctx.beginPath();
   ctx.arc(x, y, TILE * 1.5, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = '#ff2b2b';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
-  ctx.fillStyle = '#ff3b3b';
-  const blink = Math.sin(time * 0.7) > 0.94 ? 0.15 : 1;
-  ctx.globalAlpha = blink;
-  ctx.beginPath();
-  ctx.ellipse(x - TILE * 0.45, y - TILE * 0.2, TILE * 0.17, TILE * 0.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(x + TILE * 0.45, y - TILE * 0.2, TILE * 0.17, TILE * 0.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  // Eyes: hard blocks that blink off, not soft ellipses.
+  if (Math.sin(time * 0.7) <= 0.94) {
+    ctx.fillStyle = '#ff3b3b';
+    ctx.fillRect(Math.round(x - TILE * 0.62), Math.round(y - TILE * 0.3), 9, 7);
+    ctx.fillRect(Math.round(x + TILE * 0.62) - 9, Math.round(y - TILE * 0.3), 9, 7);
+  }
 
+  // The grin, as straight lines.
   ctx.strokeStyle = '#ff6a6a';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(x, y + TILE * 0.15, TILE * 0.7, 0.25 * Math.PI, 0.75 * Math.PI);
+  ctx.moveTo(x - TILE * 0.5, y + TILE * 0.35);
+  ctx.lineTo(x - TILE * 0.17, y + TILE * 0.62);
+  ctx.lineTo(x + TILE * 0.17, y + TILE * 0.62);
+  ctx.lineTo(x + TILE * 0.5, y + TILE * 0.35);
   ctx.stroke();
 }
 
-/* ------------------------------------------------------------------ */
-/* Lighting                                                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * The darkness, with the ship's headlight and every glow cut out of it.
- *
- * `destination-out` on a separate canvas is the cheapest correct way to do
- * this: build the dark, punch holes, composite once. Doing it with per-tile
- * alpha would look like a grid, and doing it per-pixel in JS would cost more
- * than everything else in the frame combined.
- */
-export function createLightLayer() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1;
-  canvas.height = 1;
-  return { canvas, ctx: canvas.getContext('2d') };
-}
-
-export function drawLighting(layer, viewW, viewH, origin, ship, depthFt, extraLights, time) {
-  const w = Math.max(1, Math.ceil(viewW / LIGHT_SCALE));
-  const h = Math.max(1, Math.ceil(viewH / LIGHT_SCALE));
-  if (layer.canvas.width !== w || layer.canvas.height !== h) {
-    layer.canvas.width = w;
-    layer.canvas.height = h;
-  }
-  const ctx = layer.ctx;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalCompositeOperation = 'source-over';
-
-  ctx.fillStyle = `rgba(2, 3, 8, ${darknessAt(depthFt)})`;
-  ctx.fillRect(0, 0, w, h);
-  ctx.globalCompositeOperation = 'destination-out';
-
-  const punch = (sx, sy, radius, strength) => {
-    const lx = (sx - origin.x) / LIGHT_SCALE;
-    const ly = (sy - origin.y) / LIGHT_SCALE;
-    const lr = radius / LIGHT_SCALE;
-    // A non-finite radius makes createRadialGradient throw, which would take the
-    // whole frame down over a cosmetic light. Skip it instead.
-    if (!Number.isFinite(lx) || !Number.isFinite(ly) || !Number.isFinite(lr) || lr <= 0) return;
-    if (lx + lr < 0 || lx - lr > w || ly + lr < 0 || ly - lr > h) return;
-    const grad = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
-    grad.addColorStop(0, `rgba(0,0,0,${strength})`);
-    grad.addColorStop(0.45, `rgba(0,0,0,${strength * 0.55})`);
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(lx - lr, ly - lr, lr * 2, lr * 2);
-  };
-
-  // The ship's own lamp, with a flicker so it reads as a lamp and not a decal.
-  const flicker = 0.94 + 0.06 * Math.sin(time * 23) * Math.sin(time * 7.3);
-  punch(ship.x, ship.y, TILE * 5.4 * flicker, 0.96);
-  punch(ship.x, ship.y, TILE * 2.2, 1);
-
-  for (const light of extraLights) punch(light.x, light.y, light.r, light.strength);
-
-  ctx.globalCompositeOperation = 'source-over';
-  return layer.canvas;
-}
-
-/**
- * Every ore tile, gas pocket and lava pool on screen that should glow, in world
- * coordinates, so the light pass does not have to walk the grid a second time.
- */
-export function collectLights(world, origin, viewW, viewH) {
-  const lights = [];
-  const c0 = Math.max(0, Math.floor(origin.x / TILE));
-  const c1 = Math.min(COLS - 1, Math.ceil((origin.x + viewW) / TILE));
-  const r0 = Math.max(0, Math.floor(origin.y / TILE));
-  const r1 = Math.min(ROWS - 1, Math.ceil((origin.y + viewH) / TILE));
-  for (let row = r0; row <= r1; row += 1) {
-    for (let col = c0; col <= c1; col += 1) {
-      const i = row * COLS + col;
-      const kind = kindOf(world.tiles[i]);
-      if (kind === KIND.LAVA) {
-        lights.push({ x: (col + 0.5) * TILE, y: (row + 0.5) * TILE, r: TILE * 2.6, strength: 0.5 });
-      } else if (kind === KIND.ORE) {
-        const ore = ORE_BY_ID[world.ore[i]];
-        if (ore && ore.tier >= 2) {
-          lights.push({ x: (col + 0.5) * TILE, y: (row + 0.5) * TILE, r: TILE * 1.5, strength: 0.3 });
-        }
-      }
-    }
-  }
-  return lights;
-}

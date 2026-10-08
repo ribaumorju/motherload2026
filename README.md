@@ -7,6 +7,8 @@ Plain HTML, CSS and JavaScript. **No dependencies. No build step. No bundler.**
 
 ![The title screen](docs/screenshot.png)
 
+![The surface, with the HUD](docs/gameplay.png)
+
 ```bash
 npm start          # http://127.0.0.1:8765
 ```
@@ -45,9 +47,11 @@ The loop is the original's: dig down, come back up, sell, upgrade, go deeper.
   upgrades.** Dying is a setback measured in one trip, not in the run.
 - **Mr. Natas**, at the bottom, behind more rock than any sane person would dig.
 
-Arrow keys or WASD to fly, hold `Space` to drill, `E` to dock at the surface
-buildings, `Esc` to pause, `M` to mute. On a phone the left half of the screen is
-a stick and the right half drills.
+Arrow keys or WASD to fly, and **pushing into rock drills it** - there is no
+separate drill button, because you point the pod at the rock and it goes through
+it. Hold `Space` (or `Shift` / `J`) to cut straight down on the spot without
+moving. `E` docks at the surface buildings, `Esc` pauses, `M` mutes. On a phone
+the left half of the screen is a stick and the right half drills.
 
 Two rules are worth knowing before you start, because they are the ones the game
 does not explain twice:
@@ -57,6 +61,19 @@ does not explain twice:
 - **Falling down your own shaft is safe.** A terminal-velocity landing costs
   about a point and a half of hull. The things that end a run are gas, lava and
   an empty tank.
+
+### The look
+
+It is deliberately 1999. Flat pixel art with hard edges, a limited palette, pixel
+fonts, solid panels with two-pixel borders and bevelled edges, and hard offset
+shadows. Nothing on the screen is blurred, rounded or faded: no gradients, no
+bloom, no glow, no translucency, and no fog hiding the mine.
+
+The tiles are the clearest example. Rock is three tones laid down in whole blocks
+picked by position hash; ore is solid facets with black outlines; lava is flat
+orange with hard crust blocks. The soft radial mottles and half-transparent grain
+that came before cost more to draw and read as a photograph of rock rather than as
+rock.
 
 ---
 
@@ -126,12 +143,14 @@ npm run balance    # play 30 simulated minutes with a bot and report
 `npm test` runs three layers:
 
 1. **Syntax** - every module parses.
-2. **Sim** (69 checks) - generation is deterministic per seed, the sky is never
+2. **Sim** (73 checks) - generation is deterministic per seed, the sky is never
    breached, the pod never ends up inside rock, ore respects its depth gate,
    gas detonates, lava burns and refuses the drill, explosives clear it anyway,
-   the economy never overdraws, every event the sim emits is handled, the save
-   round-trips, and five simulated minutes of play stay consistent.
-3. **Browser** (47 checks) - the real page in headless Chrome: every module
+   pushing into rock drills it without a drill button, a held direction in open
+   air does not cut a tile far below the pod, a pod resting on a ledge can still
+   get down, the economy never overdraws, every event the sim emits is handled,
+   the save round-trips, and five simulated minutes of play stay consistent.
+3. **Browser** (48 checks) - the real page in headless Chrome: every module
    imports, the atlas builds, real frames draw into a real canvas, the HUD
    mounts, every menu opens, every sound cue plays, and a save survives a real
    `localStorage` round trip. A second pass boots the real `src/main.js` and
@@ -139,9 +158,10 @@ npm run balance    # play 30 simulated minutes with a bot and report
 
 The browser layer also samples **actual pixels**, because the things that break
 silently in a renderer are visual and no assertion about state catches them: the
-headlight has to actually light the rock, the mine has to get darker with depth,
+view has to be lit edge to edge at depth, the rock has to get darker with depth,
 the palette has to interpolate, ore has to be brighter than the rock around it,
-and the frame must not be blank.
+the sky has to be flat bands rather than a gradient, the bit has to end up
+pointing at the rock it is cutting, and the frame must not be blank.
 
 `npm run shots` writes a sheet rendering the game at six depths, which is how
 the look gets reviewed without playing to 9,000 feet.
@@ -161,6 +181,15 @@ therefore a *lower* bound, and its wrecks are not treated as a balance failure -
 tuning the hazards until a blind digger survives them would be the opposite of
 what makes them hazards. What it is good for is the shape of the run, and it
 found most of the real bugs in this project.
+
+Two things it is not good for. It is **fuel-limited, not depth-limited**: with a
+mid-tier tank it fills about 40% of its hold before the low-fuel warning sends it
+home, which is the game working as designed rather than a grind. And because a
+held direction now drills, its crude navigation cuts into walls - steering while
+climbing means drilling sideways out of its own tunnel - so its numbers are worse
+than they were before that change, while a person flying straight up a shaft they
+dug is unaffected. When it reports the economy as too tight, check `npm run fuel`
+and play for a minute before believing it.
 
 ---
 
@@ -188,10 +217,39 @@ steering the ship, which is also what it is.
 once at startup at 2x and blitted. Per-pixel noise per tile per frame is a way to
 spend an entire frame on the background.
 
-**The darkness is a separate canvas at quarter resolution.** Build the dark,
-punch holes in it with `destination-out` for the headlight and every glow, then
-composite once. Per-tile alpha would look like a grid; a per-pixel JS pass would
-cost more than the rest of the frame combined.
+**There is no fog of war.** The mine used to be a circle of light around the pod
+with darkness everywhere else, built as a separate quarter-resolution canvas with
+holes punched in it with `destination-out`. It looked good and it was the wrong
+game: the original showed you the wall you were about to cut, and a player who
+cannot see the rock cannot plan a route through it. What tells you how deep you
+are now is the rock's own colour, which was doing most of that work anyway.
+
+**The drill is aimed; only its flutes turn.** The bit is drawn pointing at the
+tile it is cutting - down, sideways or up - and the spin only slides the flutes
+across it. Rotating the whole cone by the spin angle, which is what it did first,
+makes the bit sweep through every orientation like a clock hand and spend most of
+its time pointing at nothing.
+
+**Holding a direction drills it.** There is no separate drill button: pushing
+into rock cuts it, which is what the original did and what makes the controls one
+idea instead of two. The search for what to cut only looks a couple of rows past
+the hull, because it has to be bounded - an unbounded one means holding Down while
+falling down an open shaft quietly bores a hole hundreds of feet below the pod.
+
+**A pod resting on a ledge used to be stuck there for good.** The hull is 26px
+wide in a 32px tile, so a pod a few pixels off centre is held up by the
+*neighbouring* column's rock while its own column is clear all the way down:
+there is nothing to cut and nothing to fall through, so holding the drill did
+nothing at all. The drill now centres the pod on its own column when it is aimed
+down at open air and sitting still, which slides it off the ledge. The bot found
+this by not moving for twenty seconds and reporting the column underneath as
+`empty, empty, empty, empty, empty, empty, empty`, which is the entire diagnosis.
+
+**Flying over the surface used to drill it.** When the drill found nothing solid
+within reach it named a real row rather than an empty one, and the nearest real
+row above the sky is the ground - so a pod climbing out of the mine quietly
+chewed a hole in the landing strip, and the drill's extra drag made the climb home
+look sluggish. Naming an empty tile instead means the drill simply does nothing.
 
 **Saving is a seed and a list of holes.** The terrain is fully determined by its
 seed, so the only thing worth storing is what the player changed. A deep run

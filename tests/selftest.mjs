@@ -1,7 +1,7 @@
 /**
  * The runnable check for everything that is not pixels.
  *
- *   node tools/run-tests.mjs
+ *   node tests/selftest.mjs
  *
  * It exercises the sim the way the game does - through `step` with a fake
  * input - so a change that breaks movement, the drill, the economy or the save
@@ -23,7 +23,7 @@ import {
   drillTarget,
 } from '../src/sim/game.js';
 import { serialize, deserialize, packHoles } from '../src/sim/save.js';
-import { blocked, colOf, rowOf } from '../src/sim/physics.js';
+import { blocked, colOf, rowOf, SHIP_HALF_H } from '../src/sim/physics.js';
 
 let passed = 0;
 const failures = [];
@@ -363,6 +363,101 @@ test('the drill follows the controls: down when idle, sideways when pushed', () 
   // Pushing both ways is not a direction, so it falls back to digging down.
   const both = drillTarget(s, { left: 1, right: 1, up: 0, down: 0 });
   assert.equal(both.dir, 'down');
+});
+
+test('pushing into rock drills it, with no drill button held', () => {
+  // The arrow keys are the drill: hold a direction and it cuts that way. This is
+  // how the original played, and it is why there is no separate drill control to
+  // find. Note `drill: 0` - nothing but the direction is being held.
+  const s = createState(920);
+  const y0 = s.ship.y;
+  run(s, 4, { down: 1 });
+  assert.ok(s.stats.dug > 0, 'holding down with no drill key dug nothing');
+  assert.ok(s.ship.y > y0 + TILE, `holding down did not descend: ${(s.ship.y - y0).toFixed(1)}px`);
+  assert.equal(blocked(s.world, s.ship.x, s.ship.y), null, 'ended up inside rock');
+});
+
+test('the sim tells the renderer which way the bit is aimed', () => {
+  // The bit has to point at the rock it is cutting, and the renderer can only
+  // know that if the sim publishes it. Without this the drill has no direction
+  // to hold and falls back to spinning through all of them.
+  const s = createState(922);
+  const at = (input) => {
+    step(s, 1 / 60, { left: 0, right: 0, up: 0, down: 0, drill: 0, ...input });
+    return s.ship.drillDir;
+  };
+  assert.equal(at({ right: 1 }), 'right');
+  assert.equal(at({ left: 1 }), 'left');
+  assert.equal(at({ up: 1 }), 'up');
+  assert.equal(at({ drill: 1 }), 'down');
+});
+
+test('holding a direction in open air does not drill a distant tile', () => {
+  /**
+   * The drill looks a couple of rows past the hull for rock, because while a
+   * tile is being cut the pod sits part-way inside it and its edge crosses into
+   * the next row.
+   *
+   * That search has to be bounded. Now that a held arrow key drills by itself,
+   * an unbounded one would mean falling down an open shaft while holding Down
+   * and quietly boring a hole hundreds of feet below the pod - which is invisible
+   * while it happens and leaves a tunnel where nothing was ever dug.
+   */
+  const s = createState(921);
+  const col = colOf(s.ship.x);
+  const top = rowOf(s.ship.y) + 1;
+  for (let row = top; row < top + 30; row += 1) s.world.setTile(col, row, EMPTY);
+  const far = top + 20;
+  // Put rock back at the bottom rather than trusting the generator to have left
+  // some there: the mine is full of natural caverns, and this test needs to know
+  // exactly where the nearest solid tile is.
+  s.world.setTile(col, far, pack(KIND.ROCK, 0));
+  assert.ok(s.world.isSolid(col, far), 'the tile at the bottom of the shaft should be solid');
+
+  // Short enough that the pod cannot fall the whole way to the solid tile.
+  run(s, 0.4, { down: 1 });
+
+  assert.ok(s.world.isSolid(col, far), 'the drill cut a tile far below the pod');
+  assert.equal(s.stats.dug, 0, 'something was dug through open air');
+});
+
+test('a pod resting on a ledge can still get down instead of jamming', () => {
+  /**
+   * The hull is 26px wide in a 32px tile, so a pod a few pixels off centre is
+   * held up by the *neighbouring* column's rock while its own column is clear all
+   * the way down. There is nothing to cut and nothing to fall through, so
+   * holding the drill did nothing at all and the pod sat on the ledge forever.
+   *
+   * The bot found this after twenty seconds of not moving, and reported the
+   * column below as "empty, empty, empty, empty, empty, empty, empty", which is
+   * the whole diagnosis: a wedged pod looks the same as unbreakable rock until
+   * you look at what is actually underneath it.
+   */
+  const s = createState(923);
+  const col = 8;
+  const ledge = SKY_ROWS + 12; // the first row of rock in the neighbouring column
+  const depth = 18;
+  // Both columns start clear, then the neighbouring one turns to rock from
+  // `ledge` down: that is the ledge the hull ends up sitting on.
+  for (let r = ledge - 1; r < ledge + depth; r += 1) {
+    s.world.setTile(col, r, EMPTY);
+    s.world.setTile(col - 1, r, EMPTY);
+  }
+  for (let r = ledge; r < ledge + depth; r += 1) s.world.setTile(col - 1, r, pack(KIND.ROCK, 0));
+  s.world.setTile(col, ledge + depth, pack(KIND.ROCK, 0)); // a floor to land on
+
+  // A few pixels left of the column's centre, so the hull overlaps the ledge.
+  s.ship.x = col * TILE + 12;
+  s.ship.y = ledge * TILE - SHIP_HALF_H - 1;
+  s.ship.vx = 0;
+  s.ship.vy = 0;
+  assert.equal(blocked(s.world, s.ship.x, s.ship.y), null, 'the pod starts inside rock');
+
+  const y0 = s.ship.y;
+  run(s, 3, { down: 1 });
+
+  assert.ok(s.ship.y > y0 + TILE, `the pod never dropped off the ledge: ${(s.ship.y - y0).toFixed(1)}px`);
+  assert.equal(blocked(s.world, s.ship.x, s.ship.y), null, 'ended up inside rock');
 });
 
 test('holding sideways carves a horizontal tunnel', () => {

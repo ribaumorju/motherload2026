@@ -89,6 +89,3 @@ export const SKY = {
   grassLit: '#4d7038',
   soil: '#4a3324',
 };
-
-/** Darkness per depth: it gets properly black down there. */
-export const darknessAt = (depthFt) => lerp(0.06, 0.93, clamp(depthFt / 3200, 0, 1));

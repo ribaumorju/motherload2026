@@ -41,6 +41,7 @@ export function createState(seed = (Math.random() * 0xffffffff) >>> 0) {
       hull: 0,
       heat: 0,
       drilling: false,
+      drillDir: 'down',
       thrust: 0,
       dirX: 0,
       facing: 1,
@@ -102,6 +103,22 @@ export const tileHardness = (row) => 1 + Math.min(1.5, rowDepth(row) / 6000);
 export const digSpeed = (s, row) => drillPower(s) / FEET_PER_PX / tileHardness(row);
 
 /**
+ * How many rows past the hull's edge the drill will look for rock.
+ *
+ * The search has to exist: while the pod is cutting a tile it sits part-way
+ * inside it, so its hull edge crosses into the next row before the tile is
+ * finished, and the target has to be "the first solid tile that way" rather than
+ * "the tile one row over". Without the search the target jumps to the square
+ * beyond the one being cut, and the pod is left wedged through a tile it can no
+ * longer reach.
+ *
+ * It also has to stop. Now that the arrow keys drill by themselves, holding
+ * Down while falling through an open shaft would otherwise search all the way to
+ * the bedrock and start cutting a tile hundreds of feet below the pod.
+ */
+const DRILL_REACH = 2;
+
+/**
  * Which tile the drill is pointing at, given what the player is asking for.
  *
  * The drill follows the controls: push left or right and it cuts that way, push
@@ -128,28 +145,30 @@ export function drillTarget(state, input) {
   if (input.left && !input.right) return { col: col - 1, row, dir: 'left' };
   if (input.right && !input.left) return { col: col + 1, row, dir: 'right' };
 
-  /**
-   * Vertically it is the first *solid* tile in that direction, searched from
-   * the row the hull's edge is in.
-   *
-   * Stepping one row past the hull's edge looks equivalent and is not: while
-   * the pod is cutting a tile it sits part-way inside it, so the hull's edge
-   * crosses into the next row before the tile is finished, the target jumps
-   * ahead to the tile beyond, and the pod is left wedged half-way through a
-   * square it can no longer reach. Searching for the first solid tile keeps the
-   * drill on the same square until it is gone.
-   */
   if (input.up && !input.down) {
-    for (let r = rowOf(ship.y - SHIP_HALF_H); r > SKY_ROWS; r -= 1) {
+    const start = rowOf(ship.y - SHIP_HALF_H);
+    for (let r = start; r > SKY_ROWS && r >= start - DRILL_REACH; r -= 1) {
       if (kindOf(state.world.tile(col, r)) !== KIND.EMPTY) return { col, row: r, dir: 'up' };
     }
-    return { col, row: SKY_ROWS, dir: 'up' };
+    /**
+     * Nothing solid within reach: name the empty tile the search started on, so
+     * `drill` sees EMPTY and does nothing.
+     *
+     * Naming a real row instead - which is what this used to do - meant a pod
+     * flying up above the surface drilled the landing strip it had just left,
+     * because the nearest "real" row above the sky is the ground. That silently
+     * chewed a hole in the surface every time the player flew over it, and the
+     * drill's extra drag made climbing out of the mine look sluggish.
+     */
+    return { col, row: start, dir: 'up' };
   }
 
-  for (let r = rowOf(ship.y + SHIP_HALF_H); r < ROWS - 1; r += 1) {
+  const start = rowOf(ship.y + SHIP_HALF_H);
+  for (let r = start; r <= start + DRILL_REACH && r < ROWS - 1; r += 1) {
     if (kindOf(state.world.tile(col, r)) !== KIND.EMPTY) return { col, row: r, dir: 'down' };
   }
-  return { col, row: ROWS - 1, dir: 'down' };
+  // Same reasoning as the upward case: name an empty tile, not a real one.
+  return { col, row: start, dir: 'down' };
 }
 
 /* ------------------------------------------------------------------ */
@@ -538,18 +557,30 @@ export function step(s, dt, input) {
   ship.vy = clamp(ship.vy, -PHYS.maxSpeedY, PHYS.maxSpeedY);
 
   // --- the drill ------------------------------------------------------
-  // Drilling up is allowed, and it is the only way out of one of the mine's
-  // enclosed caverns. It is slower and dearer than flying, so it never becomes
-  // the way home - only the way out of a trap.
-  const wantsToDig = Boolean(input.drill);
+  /**
+   * Pushing into rock cuts it.
+   *
+   * Holding a direction drills that way, which is what the original did and what
+   * makes the controls one idea instead of two: you point the pod at the rock and
+   * it goes through it, with no separate drill button to find. Space (or Shift)
+   * still drills straight down on its own, for a player who wants to hover and
+   * cut without moving.
+   *
+   * Drilling up is allowed too, and it is the only way out of one of the mine's
+   * enclosed caverns. It is slower and dearer than flying, so it never becomes
+   * the way home - only the way out of a trap.
+   */
+  const pushing = Boolean(input.left || input.right || input.up || input.down);
+  const wantsToDig = Boolean(input.drill) || pushing;
   ship.drilling = false;
-  let dugSomething = null;
   if (wantsToDig) {
     const target = drillTarget(s, input);
+    // What the bit is aimed at, for the renderer: the drill has to point at the
+    // rock it is cutting rather than spin through every direction in turn.
+    ship.drillDir = target.dir;
     const before = s.world.tile(target.col, target.row);
     const result = drill(s, dt, target);
     if (result) {
-      dugSomething = result;
       ship.drilling = result === 'dug';
       // Bumping into lava is worth a nudge, but only once every second or so -
       // the message is not news after the first time.
@@ -560,6 +591,21 @@ export function step(s, dt, input) {
     } else if (kindOf(before) !== KIND.EMPTY) {
       // Mid-tile: still drilling, still burning fuel, still making noise.
       ship.drilling = true;
+    } else if (target.dir === 'down' && Math.abs(ship.vy) < 20) {
+      /**
+       * Aimed down at open air while sitting still.
+       *
+       * That means the pod is resting on the edge of a ledge in the column next
+       * door: the hull is 26px wide in a 32px tile, so a pod a few pixels off
+       * centre is held up by its neighbour's rock while its own column is clear
+       * all the way down. There is nothing to cut and nothing to fall through,
+       * so holding the drill did nothing at all and the pod sat there forever.
+       *
+       * Centring it on its own column slides it off the ledge and it drops. This
+       * only runs when the pod is at rest, so it never fights the player for
+       * control while they are flying.
+       */
+      trackColumn(s, target, dt);
     }
   }
 

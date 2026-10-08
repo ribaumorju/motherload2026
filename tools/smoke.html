@@ -124,27 +124,17 @@
         const cam = C.createCamera(800, 500);
         C.updateCamera(cam, state.ship, 0.016);
         const origin = C.camOrigin(cam);
-        const layer = RW.createLightLayer();
 
         await check('a full world frame draws without throwing', () => {
           RW.drawSky(ctx, cam, origin, 800, 500);
           RW.drawSurface(ctx, origin, 0);
           RW.drawTiles(ctx, state.world, origin, 800, 500, atlas);
-          RW.drawOreGlow(ctx, state.world, origin, 800, 500, 0);
           RW.drawNatas(ctx, origin, 0);
           RS.drawShip(ctx, state, origin, 0, 1.2);
           FX.drawDust(ctx, FX.createFx(), origin);
           FX.drawPops(ctx, state, origin);
-          FX.drawVignette(ctx, 800, 500, state.depth, 0, 0);
-          FX.drawCrt(ctx, 800, 500, 0);
-          return true;
-        });
-
-        await check('lighting composites at the requested size', () => {
-          const lights = RW.collectLights(state.world, origin, 800, 500);
-          const c = RW.drawLighting(layer, 800, 500, origin, state.ship, state.depth, lights, 0);
-          if (!c) return 'no light canvas returned';
-          if (c.width !== 200) return `light canvas is ${c.width}px wide, expected 200`;
+          FX.drawHeatTint(ctx, 800, 500, 0, 0);
+          FX.drawCrt(ctx, 800, 500);
           return true;
         });
 
@@ -159,13 +149,7 @@
           const steps = {
             drawTiles: () => RW.drawTiles(ctx, deep.world, o, 800, 500, atlas),
             drawNatas: () => RW.drawNatas(ctx, o, 1),
-            drawOreGlow: () => RW.drawOreGlow(ctx, deep.world, o, 800, 500, 1),
-            collectLights: () => RW.collectLights(deep.world, o, 800, 500),
-            drawLighting: () => {
-              const lights = RW.collectLights(deep.world, o, 800, 500);
-              return RW.drawLighting(layer, 800, 500, o, deep.ship, deep.depth, lights, 1);
-            },
-            drawVignette: () => FX.drawVignette(ctx, 800, 500, deep.depth, 0, 1),
+            drawHeatTint: () => FX.drawHeatTint(ctx, 800, 500, 0, 1),
           };
           for (const [name, fn] of Object.entries(steps)) {
             try {
@@ -339,18 +323,13 @@
           c2.y = s.ship.y;
           C.updateCamera(c2, s.ship, 1);
           const o = C.camOrigin(c2);
-          const lc = RW.createLightLayer();
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.fillStyle = '#04060c';
           ctx.fillRect(0, 0, 800, 500);
           RW.drawSky(ctx, c2, o, 800, 500);
           RW.drawSurface(ctx, o, 0);
           RW.drawTiles(ctx, s.world, o, 800, 500, atlas);
-          RW.drawOreGlow(ctx, s.world, o, 800, 500, 0);
           RS.drawShip(ctx, s, o, 0, 0);
-          const lights = RW.collectLights(s.world, o, 800, 500);
-          const lc2 = RW.drawLighting(lc, 800, 500, o, s.ship, s.depth, lights, 0);
-          ctx.drawImage(lc2, 0, 0, 800, 500);
           const data = ctx.getImageData(0, 0, 800, 500).data;
           return { data, origin: o, state: s };
         };
@@ -372,21 +351,32 @@
           return sum / (data.length / 4);
         };
 
-        await check('the headlight actually lights the rock around the ship', () => {
-          const { data } = frameAt(60);
-          // Near the ship, mid-screen; far away, near the top-left corner.
-          const near = luma(data, 400, 250);
-          const far = luma(data, 20, 20);
-          if (!(near > far + 4)) return `near ${near.toFixed(1)} vs far ${far.toFixed(1)} - no lighting falloff`;
-          if (near < 12) return `the lit area is black (${near.toFixed(1)}) - the light pass is not punching through`;
-          return ok(`lit ${near.toFixed(1)} vs dark ${far.toFixed(1)}`);
+        await check('there is no fog of war: the view is lit edge to edge', () => {
+          const { data } = frameAt(300);
+          // The mine used to be a circle of light around the pod with blackness
+          // everywhere else, and by this depth the darkness was at 0.93. Count
+          // how much of the frame is readable rock: the whole point of removing
+          // the fog is that the player can see the wall they are about to cut.
+          let lit = 0;
+          let total = 0;
+          for (let y = 10; y < 490; y += 3) {
+            for (let x = 10; x < 790; x += 3) {
+              total += 1;
+              if (luma(data, x, y) > 12) lit += 1;
+            }
+          }
+          const frac = lit / total;
+          if (frac < 0.75) {
+            return `only ${(frac * 100).toFixed(0)}% of the view is lit at 9,600 ft - fog is still hiding the mine`;
+          }
+          return ok(`${(frac * 100).toFixed(0)}% of the view is lit at 9,600 ft`);
         });
 
-        await check('the mine gets darker with depth', () => {
+        await check('the rock gets darker with depth', () => {
           const shallow = avgLuma(frameAt(20).data);
           const deep = avgLuma(frameAt(300).data);
           if (!(deep < shallow * 0.85)) {
-            return `shallow ${shallow.toFixed(1)} vs deep ${deep.toFixed(1)} - darkness is not tracking depth`;
+            return `shallow ${shallow.toFixed(1)} vs deep ${deep.toFixed(1)} - the rock palette is not deepening`;
           }
           return ok(`shallow ${shallow.toFixed(1)} -> deep ${deep.toFixed(1)}`);
         });
@@ -429,16 +419,129 @@
           return ok(`ore ${oreAvg.toFixed(1)} vs rock ${rockAvg.toFixed(1)} (${orePixels} bright px)`);
         });
 
-        await check('the surface frame contains sky, and the deep frame does not', () => {
-          const surface = frameAt(2).data;
-          const deep = frameAt(300).data;
-          // The sky is blue and bright; the deep mine is neither.
-          const surfaceBlue = avgChannel(surface, 2);
-          const deepBlue = avgChannel(deep, 2);
-          if (!(surfaceBlue > deepBlue + 8)) {
-            return `surface blue ${surfaceBlue.toFixed(1)} vs deep ${deepBlue.toFixed(1)} - no sky above ground`;
+        await check('the bit points at the rock instead of sweeping through every direction', () => {
+          /**
+           * Renders the pod alone on a black canvas, aimed two different ways,
+           * and finds where the orange of the bit actually ends up.
+           *
+           * The bug this pins: the whole cone used to be rotated by the spin
+           * angle, so the bit swung round like a clock hand and its position
+           * hardly depended on which way the pod was cutting. Sampling the
+           * centroid is what makes that visible - a spinning bit has a centroid
+           * near the mount in every orientation.
+           */
+          const bitCentroid = (dir) => {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 200, 200);
+            const s = G.createState(4242);
+            s.ship.x = 100;
+            s.ship.y = 100;
+            s.ship.vx = 0;
+            s.ship.vy = 0;
+            s.ship.drilling = true;
+            s.ship.drillDir = dir;
+            RS.drawShip(ctx, s, { x: 0, y: 0 }, 0, 1.0);
+            const d = ctx.getImageData(0, 0, 200, 200).data;
+            let n = 0;
+            let sx = 0;
+            let sy = 0;
+            for (let y = 0; y < 200; y += 1) {
+              for (let x = 0; x < 200; x += 1) {
+                const i = (y * 200 + x) * 4;
+                // The darker orange half of the cone is the only thing on the
+                // pod in this range, so it stands in for the bit.
+                if (d[i] > 200 && d[i + 1] > 110 && d[i + 1] < 200 && d[i + 2] < 90) {
+                  n += 1;
+                  sx += x;
+                  sy += y;
+                }
+              }
+            }
+            if (!n) return null;
+            return { n, x: sx / n - 100, y: sy / n - 100 };
+          };
+
+          const down = bitCentroid('down');
+          const right = bitCentroid('right');
+          if (!down || !right) return 'no drill pixels found in either orientation';
+          if (!(down.y > 4)) return `aimed down, the bit sits at y ${down.y.toFixed(1)} - not below the pod`;
+          if (!(right.x > 4)) return `aimed right, the bit sits at x ${right.x.toFixed(1)} - not beside the pod`;
+          if (Math.abs(down.y - right.y) < 3) return 'the bit barely moved between the two orientations';
+          return ok(`bit ${down.y.toFixed(1)}px below aimed down, ${right.x.toFixed(1)}px right aimed right`);
+        });
+
+        await check('the sky is flat bands, not a smooth gradient', () => {
+          // Flat colour is the whole point of the art direction, and a gradient
+          // is the easiest thing to reintroduce by accident. A vertical column
+          // through a banded sky holds a handful of colours; through a gradient
+          // it holds one per row.
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.fillStyle = '#04060c';
+          ctx.fillRect(0, 0, 800, 500);
+          const c4 = C.createCamera(800, 500);
+          c4.x = 400;
+          c4.y = 80;
+          RW.drawSky(ctx, c4, C.camOrigin(c4), 800, 500);
+          const d = ctx.getImageData(0, 0, 800, 500).data;
+          const seen = new Set();
+          for (let y = 0; y < 260; y += 1) {
+            const i = (y * 800 + 40) * 4;
+            seen.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
           }
-          return ok(`sky blue ${surfaceBlue.toFixed(1)} vs deep ${deepBlue.toFixed(1)}`);
+          if (seen.size > 16) {
+            return `a sky column holds ${seen.size} distinct colours - that is a gradient, not bands`;
+          }
+          return ok(`${seen.size} colours down a sky column`);
+        });
+
+        await check('the sky paints above ground and is skipped entirely at depth', () => {
+          /**
+           * Probes the sky alone, on a known blank canvas.
+           *
+           * This used to compare the whole surface frame against the whole deep
+           * frame and lean on the fog to make the deep one darker, which stopped
+           * meaning anything once the fog came out. Painting the sky on its own
+           * tests the sky rather than whatever the camera happened to be
+           * pointing at, and "did anything get drawn" is the property that
+           * actually matters: sky above ground, nothing at all below it.
+           */
+          const probe = (camY) => {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.fillStyle = '#04060c';
+            ctx.fillRect(0, 0, 800, 500);
+            const c3 = C.createCamera(800, 500);
+            c3.x = 400;
+            c3.y = camY;
+            RW.drawSky(ctx, c3, C.camOrigin(c3), 800, 500);
+            const d = ctx.getImageData(0, 0, 800, 500).data;
+            let changed = 0;
+            let brightest = 0;
+            for (let i = 0; i < d.length; i += 4) {
+              if (d[i] !== 4 || d[i + 1] !== 6 || d[i + 2] !== 12) changed += 1;
+              const v = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+              if (v > brightest) brightest = v;
+            }
+            return { changed, brightest };
+          };
+
+          const surface = probe(80);
+          if (surface.changed < 800 * 500 * 0.3) {
+            return `the sky only painted ${surface.changed} px above ground - it is missing`;
+          }
+          // A floor, not a claim about which feature is brightest: the hills sit
+          // in front of the sun, so the peak is whatever survives them. Deep rock
+          // reads about 40 luma, so anything near 100 means there is light and
+          // detail up there rather than a flat dark band.
+          if (surface.brightest < 100) {
+            return `the brightest thing in the sky is ${surface.brightest.toFixed(1)} luma - the sky is flat and dark`;
+          }
+
+          const deep = probe(300 * 32);
+          if (deep.changed !== 0) {
+            return `the sky painted ${deep.changed} px 9,600 ft down`;
+          }
+          return ok(`sky paints ${surface.changed} px above ground, 0 px at depth`);
         });
 
         await check('the rendered frame is not blank', () => {

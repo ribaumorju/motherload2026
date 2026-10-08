@@ -90,7 +90,6 @@ function modal(root, { title, subtitle, wide = false, onClose }) {
 
 export function showTitle(root, { onStart, onContinue, hasSave, onHelp }) {
   const card = h('div', { class: 'modal-card title-card' },
-    h('div', { class: 'title-glow' }),
     h('h1', { class: 'title-name' },
       h('span', { class: 'title-deep', text: 'DEEP' }),
       h('span', { class: 'title-core', text: 'CORE' }),
@@ -121,8 +120,9 @@ export function showTitle(root, { onStart, onContinue, hasSave, onHelp }) {
 
 export function showHelp(root, onClose) {
   const rows = [
-    ['Fly', 'Arrow keys or WASD'],
-    ['Drill', 'Hold Space (or Shift / J) - the bit follows the direction you hold'],
+    ['Move', 'Arrow keys or WASD'],
+    ['Drill', 'Push into rock - the bit cuts whichever way you are pointing'],
+    ['Drill down', 'Hold Space (or Shift / J) to cut straight down on the spot'],
     ['Dock', 'Stand under a building, press E'],
     ['Pause', 'Esc'],
     ['Mute', 'M'],

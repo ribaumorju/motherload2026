@@ -1,11 +1,11 @@
 /*
  * Deepcore's interface.
  *
- * The look is a cockpit readout over a dark screen: thin uppercase labels in a
- * mono face, values in a wide grotesk, hairline borders, and one accent per
- * meaning (fuel amber, hull red, hold cyan, credits green). Everything is
- * translucent and blurred so the mine stays visible behind it, which is the
- * whole reason it is an overlay and not a frame around a smaller canvas.
+ * The look is a 1999 cockpit readout: pixel fonts, solid panels, hard two-pixel
+ * borders, bevelled edges, and one accent per meaning (fuel amber, hull red,
+ * hold cyan, credits green). No blur, no translucency, no rounded corners, no
+ * soft shadows, no gradients - every one of those was a "made in 2026" tell, and
+ * the panels read better solid anyway because the mine behind them is busy.
  *
  * Layout rule: nothing important sits in the middle. The ship lives there, and
  * the ship is what the player is looking at.
@@ -13,13 +13,13 @@
 
 :root {
   --bg: #04060c;
-  --panel: rgba(10, 15, 24, 0.72);
-  --panel-solid: #0a0f18;
-  --line: rgba(120, 160, 210, 0.16);
-  --line-strong: rgba(140, 190, 240, 0.3);
+  --panel: #0d1220;
+  --panel-solid: #0d1220;
+  --line: #35486a;
+  --line-strong: #5d7ba6;
   --text: #e8eef8;
-  --dim: #8fa2bd;
-  --dimmer: #5f708a;
+  --dim: #9aa8bd;
+  --dimmer: #6b7a91;
   --accent: #4dd4ff;
   --fuel: #ffd23f;
   --hull: #ff5a5a;
@@ -27,11 +27,21 @@
   --gold: #ffd23f;
   --good: #3ddc97;
   --danger: #ff5a5a;
-  --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
-  --radius: 14px;
-  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  --display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  /* A hard offset shadow, not a blur: this is a screen, and a screen does not
+     cast a soft shadow. */
+  --shadow: 4px 4px 0 rgba(0, 0, 0, 0.75);
+  /* The two bevelled edges: light from the top-left, dark to the bottom-right,
+     and the inverse for anything pressed or inset. */
+  --bevel: inset -3px -3px 0 rgba(0, 0, 0, 0.5), inset 3px 3px 0 rgba(255, 255, 255, 0.14);
+  --bevel-in: inset 3px 3px 0 rgba(0, 0, 0, 0.5), inset -3px -3px 0 rgba(255, 255, 255, 0.09);
+  --radius: 0px;
+  /* VT323 is a terminal face: it stays readable at small sizes and covers
+     numbers, which is most of this interface. Press Start 2P is for the things
+     that have to shout - titles, buttons, headings - and is unreadable below
+     about 10px, so it is never used for prose. */
+  --font: 'VT323', ui-monospace, 'Courier New', monospace;
+  --mono: 'VT323', ui-monospace, 'Courier New', monospace;
+  --display: 'Press Start 2P', 'VT323', ui-monospace, monospace;
 }
 
 * {
@@ -89,11 +99,9 @@ body {
 
 .panel {
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line);
   border-radius: var(--radius);
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), var(--bevel);
 }
 
 /* ------------------------------------------------------------------ */
@@ -133,17 +141,19 @@ body {
 }
 
 .stat-label {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.18em;
+  /* Short uppercase words only, so Press Start 2P at its native 8px is crisp
+     and legible. Numbers use VT323 below, because this face is far too wide for
+     a seven-figure credit balance. */
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.08em;
   color: var(--dim);
 }
 
 .stat-value {
-  font-family: var(--display);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-family: var(--mono);
+  font-size: 24px;
+  letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
   white-space: nowrap;
@@ -151,7 +161,6 @@ body {
 
 .stat-cash .stat-value {
   color: var(--good);
-  text-shadow: 0 0 18px rgba(61, 220, 151, 0.35);
 }
 
 .stat-depth .stat-value {
@@ -159,9 +168,8 @@ body {
 }
 
 .stat-best .stat-value {
-  font-size: 14px;
+  font-size: 18px;
   color: var(--dim);
-  font-weight: 600;
 }
 
 .hud-buttons {
@@ -178,29 +186,29 @@ body {
   height: 38px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
+  background: #1b2540;
   color: var(--text);
   font-family: var(--mono);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 19px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  box-shadow: var(--bevel);
 }
 
 .icon-btn:hover {
-  background: rgba(77, 212, 255, 0.14);
+  background: #2d3f66;
   border-color: var(--line-strong);
 }
 
 .icon-btn:active {
-  transform: scale(0.94);
+  box-shadow: var(--bevel-in);
+  transform: translate(1px, 1px);
 }
 
 .icon-btn.is-off {
   color: var(--danger);
-  border-color: rgba(255, 90, 90, 0.4);
+  border-color: #8a3a3a;
 }
 
 /* --- meters --- */
@@ -224,15 +232,15 @@ body {
 }
 
 .meter-name {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   color: var(--dim);
 }
 
 .meter-value {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
   color: var(--dim);
   min-width: 92px;
@@ -240,33 +248,35 @@ body {
 }
 
 .meter-track {
-  height: 8px;
-  border-radius: 99px;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid var(--line);
+  height: 14px;
+  border-radius: var(--radius);
+  background: #05080f;
+  border: 2px solid var(--line);
+  box-shadow: var(--bevel-in);
   overflow: hidden;
+  padding: 2px;
 }
 
 .meter-fill {
   height: 100%;
   width: 0%;
-  border-radius: 99px;
-  transition: width 0.18s linear, background 0.3s;
+  /* A block bar with hard stops rather than a smooth ramp. `currentColor` lets
+     each bar set one colour below instead of repeating three gradients. */
+  background-image: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 7px);
+  color: var(--cargo);
+  transition: width 0.1s steps(4);
 }
 
 .bar-fuel .meter-fill {
-  background: linear-gradient(90deg, #b07a00, var(--fuel));
-  box-shadow: 0 0 12px rgba(255, 210, 63, 0.4);
+  color: var(--fuel);
 }
 
 .bar-hull .meter-fill {
-  background: linear-gradient(90deg, #8c1f1f, var(--hull));
-  box-shadow: 0 0 12px rgba(255, 90, 90, 0.4);
+  color: var(--hull);
 }
 
 .bar-cargo .meter-fill {
-  background: linear-gradient(90deg, #1b6f96, var(--cargo));
-  box-shadow: 0 0 12px rgba(77, 212, 255, 0.4);
+  color: var(--cargo);
 }
 
 /* A bar in trouble pulses. This is the only animation in the HUD, so it reads
@@ -311,8 +321,8 @@ body {
 .gauge {
   width: 14px;
   height: 100%;
-  border-radius: 4px;
-  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
   display: block;
 }
 
@@ -326,7 +336,7 @@ body {
   left: 0;
   transform: translateY(-50%);
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 12px;
   color: var(--dim);
   letter-spacing: 0.04em;
 }
@@ -334,10 +344,12 @@ body {
 .radar {
   width: 108px;
   height: 108px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: radial-gradient(circle at 50% 50%, rgba(12, 40, 40, 0.55), rgba(4, 10, 16, 0.85));
-  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.7), 0 0 22px rgba(61, 220, 151, 0.09);
+  /* Square, not round: a round scope with a glowing rim is a modern flourish,
+     and a grid is what a mining console would actually show. */
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
+  background: #05080f;
+  box-shadow: var(--bevel-in);
 }
 
 /* --- toasts --- */
@@ -356,15 +368,13 @@ body {
 }
 
 .toast {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 16px;
   padding: 8px 14px;
-  border-radius: 99px;
-  background: rgba(10, 15, 24, 0.9);
-  border: 1px solid var(--line-strong);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow);
-  animation: toast-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  border: 2px solid var(--line-strong);
+  box-shadow: var(--shadow), var(--bevel);
+  animation: toast-in 0.12s steps(2);
   text-align: center;
 }
 
@@ -384,7 +394,7 @@ body {
 }
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(-10px) scale(0.96); }
+  from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: none; }
 }
 
@@ -400,13 +410,12 @@ body {
   align-items: center;
   gap: 10px;
   padding: 9px 16px;
-  border-radius: 99px;
-  background: rgba(10, 15, 24, 0.9);
-  border: 1px solid var(--line-strong);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow);
-  font-size: 13px;
-  animation: toast-in 0.3s ease;
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  border: 2px solid var(--line-strong);
+  box-shadow: var(--shadow), var(--bevel);
+  font-size: 16px;
+  animation: toast-in 0.12s steps(2);
 }
 
 .dock-prompt strong {
@@ -435,25 +444,26 @@ body {
 .manifest-head {
   display: flex;
   justify-content: space-between;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   color: var(--dim);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
   padding-bottom: 6px;
 }
 
 .manifest-head strong {
+  font-family: var(--mono);
   color: var(--good);
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .manifest-row {
   display: grid;
-  grid-template-columns: 10px 1fr auto auto;
+  grid-template-columns: 14px 1fr auto auto;
   gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .manifest-name {
@@ -462,28 +472,28 @@ body {
 
 .manifest-count {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 15px;
   color: var(--dim);
 }
 
 .manifest-value {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 17px;
   color: var(--good);
   font-variant-numeric: tabular-nums;
 }
 
 .manifest-empty {
-  font-size: 12px;
+  font-size: 16px;
   color: var(--dim);
 }
 
 .swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius);
   display: block;
-  box-shadow: 0 0 8px currentColor;
+  border: 1px solid #0b0d14;
 }
 
 /* ------------------------------------------------------------------ */
@@ -496,9 +506,7 @@ body {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(2, 4, 8, 0.62);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(2, 4, 8, 0.82);
   animation: fade-in 0.2s ease;
   z-index: 10;
 }
@@ -513,16 +521,16 @@ body {
   max-height: min(86vh, 900px);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(16, 22, 34, 0.97), rgba(8, 12, 20, 0.99));
-  border: 1px solid var(--line-strong);
-  border-radius: 20px;
-  box-shadow: var(--shadow), 0 0 90px rgba(77, 212, 255, 0.07);
+  background: var(--panel-solid);
+  border: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), var(--bevel);
   overflow: hidden;
-  animation: card-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.05);
+  animation: card-in 0.12s steps(3);
 }
 
 @keyframes card-in {
-  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
 
@@ -532,20 +540,19 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 18px 20px 14px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
 }
 
 .modal-head h2 {
   margin: 0;
   font-family: var(--display);
-  font-size: 21px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 13px;
+  letter-spacing: 0.02em;
 }
 
 .modal-sub {
   margin: 4px 0 0;
-  font-size: 12.5px;
+  font-size: 17px;
   color: var(--dim);
   max-width: 46ch;
 }
@@ -577,26 +584,27 @@ body {
   flex: 1;
   min-width: 140px;
   padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius);
+  border: 2px solid var(--line-strong);
+  background: #223050;
   color: var(--text);
   font-family: var(--display);
-  font-size: 13.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  /* Press Start 2P is a very wide face, so this is a 10px that reads like 14. */
+  font-size: 10px;
+  letter-spacing: 0.04em;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: var(--bevel);
 }
 
 .btn:hover:not(:disabled) {
-  background: rgba(77, 212, 255, 0.13);
+  background: #2d3f66;
   border-color: var(--accent);
-  box-shadow: 0 0 22px rgba(77, 212, 255, 0.16);
 }
 
 .btn:active:not(:disabled) {
-  transform: translateY(1px) scale(0.99);
+  /* Pressed, not scaled: the bevel flips and the button moves a pixel. */
+  box-shadow: var(--bevel-in);
+  transform: translate(1px, 1px);
 }
 
 .btn:disabled {
@@ -605,26 +613,26 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, rgba(77, 212, 255, 0.28), rgba(77, 212, 255, 0.12));
-  border-color: rgba(77, 212, 255, 0.6);
+  background: #1d4a68;
+  border-color: #3a8fbf;
   color: #dff6ff;
 }
 
 .btn-danger {
-  border-color: rgba(255, 90, 90, 0.45);
+  border-color: #8a3a3a;
   color: #ffc9c9;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: rgba(255, 90, 90, 0.14);
+  background: #4a1d1d;
   border-color: var(--danger);
-  box-shadow: 0 0 22px rgba(255, 90, 90, 0.16);
 }
 
 .btn-ghost {
   border-color: transparent;
   color: var(--dim);
   background: transparent;
+  box-shadow: none;
 }
 
 /* ------------------------------------------------------------------ */
@@ -632,8 +640,7 @@ body {
 /* ------------------------------------------------------------------ */
 
 .modal-title {
-  background: radial-gradient(ellipse at 50% 120%, rgba(255, 120, 40, 0.16), transparent 60%),
-    rgba(2, 4, 8, 0.72);
+  background: rgba(2, 4, 8, 0.88);
 }
 
 .title-card {
@@ -642,47 +649,32 @@ body {
   padding: 40px 32px 32px;
   text-align: center;
   align-items: center;
-  border: 1px solid var(--line-strong);
-  background: linear-gradient(180deg, rgba(14, 20, 32, 0.94), rgba(6, 9, 16, 0.98));
-}
-
-.title-glow {
-  position: absolute;
-  inset: -40% -20% auto;
-  height: 60%;
-  background: radial-gradient(ellipse at 50% 50%, rgba(77, 212, 255, 0.22), transparent 70%);
-  filter: blur(20px);
-  pointer-events: none;
+  border: 2px solid var(--line-strong);
+  background: var(--panel-solid);
 }
 
 .title-name {
   position: relative;
   margin: 0;
   font-family: var(--display);
-  font-size: clamp(44px, 12vw, 74px);
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 0.92;
+  font-size: clamp(22px, 5.6vw, 36px);
+  line-height: 1.35;
   display: flex;
   flex-direction: column;
 }
 
 .title-deep {
-  color: #eaf4ff;
-  text-shadow: 0 0 40px rgba(120, 200, 255, 0.35);
+  color: #9fb2cc;
 }
 
 .title-core {
-  background: linear-gradient(180deg, #7fe4ff, #2b9fd6 55%, #0d5f8c);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #7fe4ff;
 }
 
 .title-tag {
   position: relative;
   margin: 14px 0 0;
-  font-size: 13.5px;
+  font-size: 18px;
   color: var(--dim);
   max-width: 34ch;
 }
@@ -704,7 +696,7 @@ body {
   position: relative;
   margin: 22px 0 0;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 15px;
   letter-spacing: 0.06em;
   color: #56657d;
   max-width: 40ch;
@@ -718,13 +710,13 @@ body {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 7px 16px;
-  font-size: 13px;
+  font-size: 17px;
 }
 
 .help-key {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--accent);
   padding-top: 2px;
@@ -736,9 +728,9 @@ body {
 
 .help-head {
   margin: 18px 0 8px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--dim);
 }
@@ -749,7 +741,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 13px;
+  font-size: 17px;
   color: #c3d0e2;
   line-height: 1.45;
 }
@@ -772,29 +764,30 @@ body {
   display: flex;
   gap: 4px;
   padding: 12px 20px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
 }
 
 .tab {
   padding: 9px 14px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
+  border: 2px solid var(--line);
+  border-bottom: none;
+  background: #101728;
   color: var(--dim);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
 }
 
 .tab:hover {
   color: var(--text);
+  background: #16203a;
 }
 
 .tab.is-active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: #1d4a68;
+  border-color: var(--accent);
 }
 
 .pane {
@@ -812,18 +805,18 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   color: var(--dim);
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
 }
 
 .shop-cash strong {
-  font-family: var(--display);
-  font-size: 20px;
-  letter-spacing: -0.01em;
+  font-family: var(--mono);
+  font-size: 26px;
+  letter-spacing: 0.02em;
   color: var(--good);
 }
 
@@ -833,20 +826,19 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.015);
-  transition: border-color 0.15s, background 0.15s;
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
+  background: #101728;
 }
 
 .shop-row:hover {
   border-color: var(--line-strong);
-  background: rgba(77, 212, 255, 0.04);
+  background: #16203a;
 }
 
 .shop-row.is-sell {
-  border-color: rgba(61, 220, 151, 0.3);
-  background: rgba(61, 220, 151, 0.05);
+  border-color: #2a6b52;
+  background: #10241f;
 }
 
 .shop-info {
@@ -857,21 +849,21 @@ body {
 }
 
 .shop-label {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.18em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--dim);
 }
 
 .shop-tier {
-  font-family: var(--display);
-  font-size: 14.5px;
-  font-weight: 700;
+  font-family: var(--mono);
+  font-size: 21px;
+  letter-spacing: 0.02em;
 }
 
 .shop-blurb {
-  font-size: 11.5px;
+  font-size: 15px;
   color: var(--dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -885,14 +877,14 @@ body {
   align-items: flex-end;
   gap: 1px;
   padding: 9px 12px;
-  font-size: 11.5px;
-  letter-spacing: 0.04em;
+  font-size: 9px;
+  letter-spacing: 0.03em;
 }
 
 .btn-buy em {
   font-family: var(--mono);
   font-style: normal;
-  font-size: 10px;
+  font-size: 16px;
   color: var(--good);
   letter-spacing: 0;
 }
@@ -902,16 +894,16 @@ body {
 }
 
 .shop-maxed {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   color: var(--good);
   padding: 9px 12px;
 }
 
 .shop-note {
   margin: 4px 0 0;
-  font-size: 11.5px;
+  font-size: 15px;
   color: var(--dim);
 }
 
@@ -945,28 +937,28 @@ body {
   flex-direction: column;
   gap: 2px;
   padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
+  background: #101728;
 }
 
 .end-stats span {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.16em;
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--dim);
 }
 
 .end-stats strong {
-  font-family: var(--display);
-  font-size: 17px;
+  font-family: var(--mono);
+  font-size: 23px;
   font-variant-numeric: tabular-nums;
 }
 
 .end-cause {
   margin: 14px 0 0;
-  font-size: 12.5px;
+  font-size: 17px;
   color: var(--dim);
 }
 
@@ -1044,7 +1036,7 @@ body {
   }
 
   .modal-card {
-    border-radius: 16px;
+    border-radius: var(--radius);
   }
 
   .shop-row {

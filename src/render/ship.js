@@ -47,19 +47,15 @@ function drawThrusters(ctx, ship, time) {
   if (!thrusting) return;
 
   const power = clamp(-up * 1.6, 0.2, 1);
+  // Two flat tones and a stepped length: a flame drawn as blocks, not as a
+  // gradient that fades out.
   for (const side of [-1, 1]) {
-    const len = 10 + power * 22 + Math.sin(time * 40) * 2;
-    const grad = ctx.createLinearGradient(0, 0, 0, len);
-    grad.addColorStop(0, 'rgba(190, 235, 255, 0.95)');
-    grad.addColorStop(0.4, 'rgba(90, 170, 255, 0.7)');
-    grad.addColorStop(1, 'rgba(40, 90, 220, 0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(side * 8 - 4, 9);
-    ctx.lineTo(side * 8 + 4, 9);
-    ctx.lineTo(side * 8, 9 + len);
-    ctx.closePath();
-    ctx.fill();
+    const len = 10 + power * 22 + (Math.sin(time * 40) > 0 ? 4 : 0);
+    const cx = side * 8;
+    ctx.fillStyle = '#3a7bff';
+    ctx.fillRect(cx - 4, 9, 8, len);
+    ctx.fillStyle = '#bfe8ff';
+    ctx.fillRect(cx - 2, 9, 4, len * 0.6);
   }
 }
 
@@ -67,124 +63,124 @@ function drawHull(ctx, s, time) {
   const w = 26;
   const h = 22;
 
-  // Drop shadow / ground glow so the pod sits in the world.
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-  ctx.beginPath();
-  ctx.ellipse(0, h * 0.62, w * 0.55, 4, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const body = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
-  body.addColorStop(0, '#c9d4e4');
-  body.addColorStop(0.35, '#8b98ac');
-  body.addColorStop(0.6, '#5d6879');
-  body.addColorStop(1, '#39414f');
-  ctx.fillStyle = body;
-
-  // A rounded, slightly tapered pod.
+  // A flat body with a hard bevel - lighter along the top and left, darker along
+  // the bottom and right - and a black outline all the way round.
+  ctx.fillStyle = '#7d8798';
   ctx.beginPath();
   ctx.moveTo(-w / 2 + 3, -h / 2);
   ctx.lineTo(w / 2 - 3, -h / 2);
-  ctx.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + 4);
   ctx.lineTo(w / 2 - 2, h / 2 - 3);
-  ctx.quadraticCurveTo(w / 2 - 2, h / 2, w / 2 - 6, h / 2);
-  ctx.lineTo(-w / 2 + 6, h / 2);
-  ctx.quadraticCurveTo(-w / 2 + 2, h / 2, -w / 2 + 2, h / 2 - 3);
-  ctx.lineTo(-w / 2, -h / 2 + 4);
-  ctx.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + 3, -h / 2);
+  ctx.lineTo(-w / 2 + 2, h / 2 - 3);
   ctx.closePath();
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(20, 26, 36, 0.9)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  ctx.fillStyle = '#b6c2d4';
+  ctx.fillRect(-w / 2 + 3, -h / 2, w - 6, 3);
+  ctx.fillRect(-w / 2 + 2, -h / 2 + 3, 3, h - 6);
+  ctx.fillStyle = '#454e5e';
+  ctx.fillRect(-w / 2 + 3, h / 2 - 6, w - 6, 3);
+  ctx.fillRect(w / 2 - 5, -h / 2 + 3, 3, h - 6);
 
-  // Panel seams and rivets.
-  ctx.strokeStyle = 'rgba(30, 38, 50, 0.55)';
+  ctx.strokeStyle = '#0b0d14';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(-w / 2 + 4, -1);
-  ctx.lineTo(w / 2 - 4, -1);
-  ctx.moveTo(-6, h / 2 - 2);
-  ctx.lineTo(-6, -h / 2 + 2);
-  ctx.moveTo(6, h / 2 - 2);
-  ctx.lineTo(6, -h / 2 + 2);
+  ctx.moveTo(-w / 2 + 3, -h / 2);
+  ctx.lineTo(w / 2 - 3, -h / 2);
+  ctx.lineTo(w / 2 - 2, h / 2 - 3);
+  ctx.lineTo(-w / 2 + 2, h / 2 - 3);
+  ctx.closePath();
   ctx.stroke();
 
-  // Specular streak along the top-left, which is what sells "metal".
-  const shine = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
-  shine.addColorStop(0, 'rgba(255,255,255,0.45)');
-  shine.addColorStop(0.5, 'rgba(255,255,255,0.04)');
-  shine.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = shine;
+  // Panel seams.
+  ctx.strokeStyle = '#454e5e';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(-w / 2 + 3, -h / 2 + 1);
-  ctx.lineTo(-2, -h / 2 + 1);
-  ctx.lineTo(-8, h / 2 - 2);
-  ctx.lineTo(-w / 2 + 3, h / 2 - 2);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(-w / 2 + 4, -1.5);
+  ctx.lineTo(w / 2 - 4, -1.5);
+  ctx.moveTo(-6.5, h / 2 - 4);
+  ctx.lineTo(-6.5, -h / 2 + 2);
+  ctx.moveTo(6.5, h / 2 - 4);
+  ctx.lineTo(6.5, -h / 2 + 2);
+  ctx.stroke();
 
-  // Side lamps, warm, pulsing gently.
-  const lamp = 0.6 + 0.4 * Math.sin(time * 2.4);
-  for (const side of [-1, 1]) {
-    ctx.fillStyle = `rgba(255, 196, 92, ${lamp})`;
-    ctx.beginPath();
-    ctx.arc(side * (w / 2 - 4), 2, 2, 0, Math.PI * 2);
-    ctx.fill();
+  // One hard highlight streak. No gradient.
+  ctx.fillStyle = '#d6e2f2';
+  ctx.fillRect(-w / 2 + 4, -h / 2 + 3, 4, h - 13);
+
+  // Side lamps: hard squares that blink on and off.
+  if (Math.sin(time * 2.4) > 0) {
+    ctx.fillStyle = '#ffc45c';
+    for (const side of [-1, 1]) ctx.fillRect(side * (w / 2 - 5) - 2, 0, 4, 4);
   }
 }
 
 function drawCockpit(ctx, s, time) {
-  // Glass, with a pilot silhouette behind it and a light inside.
-  const grad = ctx.createRadialGradient(-3, -6, 1, 0, -4, 11);
-  grad.addColorStop(0, 'rgba(190, 240, 255, 0.95)');
-  grad.addColorStop(0.55, 'rgba(80, 170, 220, 0.8)');
-  grad.addColorStop(1, 'rgba(20, 50, 80, 0.9)');
-  ctx.fillStyle = grad;
+  // Glass: two flat blues with a hard rim, no radial gradient.
+  ctx.fillStyle = '#2f6f9e';
   ctx.beginPath();
   ctx.ellipse(0, -4, 8.5, 7, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.fillStyle = '#6fc4e8';
+  ctx.beginPath();
+  ctx.ellipse(0, -4, 6.5, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#0b0d14';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(0, -4, 8.5, 7, 0, 0, Math.PI * 2);
+  ctx.stroke();
 
   // Pilot: a head that turns with the ship.
   const look = clamp(s.ship.dirX, -1, 1) * 1.6;
-  ctx.fillStyle = 'rgba(16, 24, 34, 0.85)';
+  ctx.fillStyle = '#101822';
   ctx.beginPath();
   ctx.arc(look, -3, 3.4, 0, Math.PI * 2);
   ctx.fill();
 
-  // Glass highlight.
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-  ctx.beginPath();
-  ctx.ellipse(-3.2, -7.5, 2.6, 1.5, -0.5, 0, Math.PI * 2);
-  ctx.fill();
+  // Glass highlight: a hard bar rather than a soft ellipse.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(-5, -9, 5, 2);
 
   // Hold gauge: a bar of ore colour that fills as the bay fills.
   const filled = load(s);
   if (filled > 0.01) {
     const w = 18;
-    ctx.fillStyle = 'rgba(8, 12, 18, 0.8)';
-    ctx.fillRect(-w / 2, 6.5, w, 3.5);
+    ctx.fillStyle = '#080c12';
+    ctx.fillRect(-w / 2, 6.5, w, 4);
     ctx.fillStyle = filled > 0.9 ? '#ff5a5a' : filled > 0.6 ? '#ffd23f' : '#4dd4ff';
-    ctx.fillRect(-w / 2 + 0.5, 7, (w - 1) * filled, 2.5);
+    ctx.fillRect(-w / 2 + 1, 7.5, (w - 2) * filled, 2);
   }
 }
 
+/**
+ * The bit, aimed at the rock it is cutting.
+ *
+ * The assembly turns to face the direction of the cut and then stays there;
+ * only the flutes travel. An earlier version rotated the whole cone by the spin
+ * angle, so the bit swept through every orientation like a clock hand and spent
+ * most of its time pointing at empty space. A drill that is not aimed at the
+ * wall it is boring into does not read as a drill.
+ */
 function drawDrill(ctx, ship, spin) {
   const active = ship.drilling;
-  ctx.save();
-  ctx.translate(0, 11);
+  const dir = ship.drillDir || 'down';
 
-  // Mount.
+  // Where the bit mounts on the hull (26 wide, 22 tall), and which way it points.
+  const mount = { down: [0, 11], up: [0, -11], right: [13, 0], left: [-13, 0] }[dir];
+  const facing = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 }[dir];
+
+  ctx.save();
+  ctx.translate(mount[0], mount[1]);
+  ctx.rotate(facing);
+
+  // Mount plate.
   ctx.fillStyle = '#2b3242';
   ctx.fillRect(-7, -3, 14, 5);
 
-  // The bit: a cone with flutes, rotating.
-  ctx.rotate(spin);
+  // The cone, flat-shaded in two tones with a hard outline: two colours and a
+  // black edge, the way a sprite from 1999 would have done it.
   const len = 13;
-  const grad = ctx.createLinearGradient(0, 0, 0, len);
-  grad.addColorStop(0, active ? '#ffd88a' : '#9aa6b8');
-  grad.addColorStop(1, active ? '#ff7a2f' : '#4a5568');
-  ctx.fillStyle = grad;
+  ctx.fillStyle = active ? '#ff9a2e' : '#7c8698';
   ctx.beginPath();
   ctx.moveTo(-6, 0);
   ctx.lineTo(6, 0);
@@ -192,26 +188,41 @@ function drawDrill(ctx, ship, spin) {
   ctx.closePath();
   ctx.fill();
 
-  // Flutes: three grooves, drawn as lines that move with the spin.
-  ctx.strokeStyle = active ? 'rgba(255, 240, 200, 0.9)' : 'rgba(200, 215, 235, 0.5)';
-  ctx.lineWidth = 1.4;
-  for (let i = 0; i < 3; i += 1) {
-    const a = (i / 3) * Math.PI * 2;
-    const px = Math.cos(a) * 4;
+  ctx.fillStyle = active ? '#ffd88a' : '#aab4c4';
+  ctx.beginPath();
+  ctx.moveTo(-6, 0);
+  ctx.lineTo(0, 0);
+  ctx.lineTo(0, len);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#151b28';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-6, 0);
+  ctx.lineTo(6, 0);
+  ctx.lineTo(0, len);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Flutes: the only moving part. They slide across the bit as it turns, which
+  // makes a screw thread read as turning without the bit changing direction.
+  const travel = Math.sin(spin) * 3.4;
+  ctx.strokeStyle = active ? '#fff3c8' : '#5d6879';
+  ctx.lineWidth = 1.2;
+  for (const base of [-3.2, 0, 3.2]) {
     ctx.beginPath();
-    ctx.moveTo(px, 1);
-    ctx.lineTo(px * 0.25, len * 0.85);
+    ctx.moveTo(base + travel * 0.4, 1);
+    ctx.lineTo(base * 0.2 + travel, len - 1);
     ctx.stroke();
   }
 
-  // Contact sparks when it is biting.
+  // Contact sparks at the tip while it is biting.
   if (active) {
-    ctx.fillStyle = 'rgba(255, 230, 160, 0.95)';
+    ctx.fillStyle = '#ffe9a8';
     for (let i = 0; i < 3; i += 1) {
       const a = (i / 3) * Math.PI * 2 + spin * 3;
-      ctx.beginPath();
-      ctx.arc(Math.cos(a) * 4, len - 2, 1.6, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(Math.cos(a) * 3.5 - 1, len - 3 + Math.sin(a) * 2, 2, 2);
     }
   }
   ctx.restore();
@@ -226,15 +237,16 @@ function drawDamage(ctx, s, time) {
   const ratio = clamp(s.ship.hull / Math.max(1, maxHull(s)), 0, 1);
   if (ratio > 0.6) return;
 
+  /**
+   * A hard red box around the pod that blinks, rather than a soft red glow that
+   * pulses through it. Same warning, drawn the way the rest of the screen is
+   * drawn: whole pixels, hard edges, and it is either there or it is not.
+   */
+  if (Math.sin(time * 9) < 0) return;
   const intensity = 1 - ratio / 0.6;
-  ctx.globalCompositeOperation = 'lighter';
-  const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, 26);
-  const pulse = 0.55 + 0.45 * Math.sin(time * 9);
-  grad.addColorStop(0, `rgba(255, 90, 60, ${0.35 * intensity * pulse})`);
-  grad.addColorStop(1, 'rgba(255, 40, 20, 0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(-28, -28, 56, 56);
-  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = `rgba(255, 60, 40, ${0.35 + 0.65 * intensity})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-16.5, -14.5, 33, 29);
 }
 
 /** A brief white flash on the pod when it takes a hit. */
@@ -242,12 +254,11 @@ export function drawHitFlash(ctx, s, origin) {
   if (!s.ship.impact) return;
   const x = s.ship.x - origin.x;
   const y = s.ship.y - origin.y;
+  const t = clamp(s.ship.impact, 0, 1);
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = clamp(s.ship.impact, 0, 1) * 0.8;
+  ctx.globalAlpha = t * 0.9;
   ctx.fillStyle = '#ffd0c0';
-  ctx.beginPath();
-  ctx.arc(x, y, TILE * 0.9, 0, Math.PI * 2);
-  ctx.fill();
+  const size = Math.round(TILE * (0.9 + t));
+  ctx.fillRect(Math.round(x - size / 2), Math.round(y - size / 2), size, size);
   ctx.restore();
 }

@@ -15,7 +15,7 @@
  */
 
 import {
-  SKY_ROWS, COLS, UPGRADES, UPGRADE_KEYS, MAX_TIER, FUEL_PRICE,
+  SKY_ROWS, COLS, ROWS, UPGRADES, UPGRADE_KEYS, MAX_TIER, FUEL_PRICE,
 } from '../src/config.js';
 import {
   createState, step, maxFuel, maxHull, cargoCap, load, sellCargo, refuel, repair,
@@ -79,17 +79,6 @@ function record(label) {
     + `${Math.round(state.maxDepth).toString().padStart(6)} ft   ${label}`,
   );
 }
-
-/**
- * How deep the bot is willing to go before turning around.
- *
- * It grows with every trip, standing in for a player who gets braver as their
- * tank, hull and drill improve. Growing it with the deepest point reached
- * instead sounds equivalent and is not: it only deepens after the bot has
- * already gone deeper, so the bot converges on whatever depth it first reached
- * and never tests whether the late game is reachable at all.
- */
-const diveRows = () => 8 + trips * 3;
 
 /** Buys the cheapest thing it can afford, most-needed first. */
 function shop() {
@@ -161,16 +150,22 @@ function decide(input) {
     }
 
     input.drill = 1;
-    const full = load(s) > 0.92;
-    // "Deep enough" only counts once the pod has settled there. Falling down an
-    // open shaft passes through the target depth on the way, and turning around
-    // mid-fall means the pod never digs the last few tiles and the tunnel never
-    // gets any deeper - the bot loops at the same depth forever.
-    const settled = Math.abs(s.ship.vy) < 20 && Math.abs(s.ship.vx) < 20;
-    const deepEnough = settled && row >= SKY_ROWS + 1 + diveRows(s);
+    /**
+     * Go home when the hold is full, the tank is getting low, or the hull is in
+     * trouble. Those are the game's three real limits, and they are what a
+     * person plays against.
+     *
+     * This used to be a depth ladder instead: dive `8 + 3 * trips` rows deeper
+     * every trip and then turn round. It reads like a plan and it is not one. It
+     * sent the bot home with an empty hold whenever a cavern happened to put it
+     * past its target without cutting anything, and once the bot's own tunnel was
+     * deeper than its target, every trip after that ended after a single tile.
+     * The ladder made the bot look like the drill was too slow when the bot was
+     * the problem.
+     */
     const lowFuel = s.ship.fuel / maxFuel(s) < 0.35;
     const lowHull = s.ship.hull / maxHull(s) < 0.4;
-    if (full || deepEnough || lowFuel || lowHull) {
+    if (load(s) > 0.92 || lowFuel || lowHull) {
       phase = 'home';
       stuck = 0;
     }
@@ -183,8 +178,19 @@ function decide(input) {
       return;
     }
     input.up = 1;
-    if (col < HOME_COL) input.right = 1;
-    else if (col > HOME_COL) input.left = 1;
+    /**
+     * Steer only up in the open sky, where flying sideways is free.
+     *
+     * Steering the whole way up means holding a direction against rock, and a
+     * held direction now drills: the bot was cutting its way out of its own
+     * tunnel sideways on the climb home, which cost it the tank and left it
+     * wandering instead of climbing. A person flies straight up the shaft they
+     * dug and only lines up once they are out in the air.
+     */
+    if (row <= SKY_ROWS) {
+      if (col < HOME_COL) input.right = 1;
+      else if (col > HOME_COL) input.left = 1;
+    }
     // Wall in the way? Cut through it. The pod can tunnel upward, which is the
     // only way out of one of the mine's enclosed caverns, and a bot that cannot
     // do it spends the rest of the run wedged in a pocket.
@@ -218,15 +224,34 @@ while (ticks < MAX_TICKS) {
     stuckTicks += 1;
     stuck += 1;
     if (stuckTicks === 60 * 20 && !stuckAt) {
+      /**
+       * What is actually underneath, because "wedged on a wall" and "the rock
+       * below is not breakable" look identical in a position, and they need
+       * completely different fixes. The column below the pod is the cheapest
+       * thing that tells them apart.
+       */
+      const col = colOf(state.ship.x);
+      const row = rowOf(state.ship.y);
+      const below = [];
+      for (let r = row; r <= Math.min(ROWS - 1, row + 6); r += 1) {
+        const kind = kindOf(state.world.tile(col, r));
+        below.push(
+          kind === KIND.EMPTY ? 'empty'
+            : kind === KIND.ORE ? 'ore'
+              : kind === KIND.GAS ? 'gas'
+                : kind === KIND.LAVA ? 'lava' : 'rock',
+        );
+      }
       stuckAt = {
         tick: ticks,
         phase,
         x: Math.round(state.ship.x),
         y: Math.round(state.ship.y),
-        col: colOf(state.ship.x),
-        row: rowOf(state.ship.y),
+        col,
+        row,
         fuel: state.ship.fuel,
         cargo: state.cargoWeight,
+        below,
       };
     }
   } else {
@@ -282,6 +307,7 @@ if (stuckAt) {
   console.log(`  at ${(stuckAt.tick / 3600).toFixed(1)} min in the "${stuckAt.phase}" phase`);
   console.log(`  position (${stuckAt.x}, ${stuckAt.y}) = col ${stuckAt.col}, row ${stuckAt.row}`);
   console.log(`  fuel ${stuckAt.fuel.toFixed(1)} L, hold ${stuckAt.cargo} kg`);
+  console.log(`  that column downwards: ${stuckAt.below.join(', ')}`);
 }
 
 console.log('');

@@ -172,32 +172,27 @@ export function createHud(root) {
       ctx.fillRect(0, y, w, 1);
     }
 
-    // Hazards, as a hint of what is down there.
-    ctx.globalAlpha = 0.5;
+    // Hazards, as a hint of what is down there. Solid, not half-transparent:
+    // this is a two-pixel readout and it has to survive the scanlines.
     const lavaY = (3000 / DEPTH_FT) * h;
     ctx.fillStyle = '#ff5a12';
     ctx.fillRect(0, lavaY, w, 2);
     const gasY = (4750 / DEPTH_FT) * h;
     ctx.fillStyle = '#7dff6a';
     ctx.fillRect(0, gasY, w, 2);
-    ctx.globalAlpha = 1;
 
     // Mr. Natas.
     const natasY = (ENDGAME.row / ROWS) * h;
     ctx.fillStyle = '#ff2b2b';
-    ctx.beginPath();
-    ctx.arc(w / 2, natasY, 3, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(Math.round(w / 2) - 3, Math.round(natasY) - 3, 6, 6);
 
-    // Best depth, as a faint line.
+    // Best depth, as a hard line.
     const bestY = clamp(state.maxDepth / DEPTH_FT, 0, 1) * h;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-    ctx.setLineDash([2, 2]);
+    ctx.strokeStyle = '#7d8aa0';
     ctx.beginPath();
-    ctx.moveTo(0, bestY);
-    ctx.lineTo(w, bestY);
+    ctx.moveTo(0, Math.round(bestY) + 0.5);
+    ctx.lineTo(w, Math.round(bestY) + 0.5);
     ctx.stroke();
-    ctx.setLineDash([]);
 
     // The ship.
     const shipY = clamp(state.depth / DEPTH_FT, 0, 1) * h;
@@ -209,7 +204,7 @@ export function createHud(root) {
     ctx.lineTo(shipX - 4, shipY + 3);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.strokeStyle = '#0b0d14';
     ctx.lineWidth = 1;
     ctx.stroke();
   }
@@ -231,42 +226,36 @@ export function createHud(root) {
 
     ctx.clearRect(0, 0, w, h);
 
-    // Rings and crosshair.
-    ctx.strokeStyle = 'rgba(120, 200, 255, 0.18)';
+    // A grid, not rings and a crosshair. This is a console readout; a round scope
+    // with a soft sweeping beam is the modern reading of the same idea.
+    ctx.strokeStyle = '#1d3a2c';
     ctx.lineWidth = 1;
-    for (let r = 1; r <= 2; r += 1) {
+    for (let i = 1; i < 4; i += 1) {
+      const p = Math.round((w * i) / 4) + 0.5;
       ctx.beginPath();
-      ctx.arc(cx, cy, (w / 2 - 3) * (r / 2), 0, Math.PI * 2);
+      ctx.moveTo(p, 0);
+      ctx.lineTo(p, h);
+      ctx.moveTo(0, p);
+      ctx.lineTo(w, p);
       ctx.stroke();
     }
-    ctx.beginPath();
-    ctx.moveTo(cx, 4);
-    ctx.lineTo(cx, h - 4);
-    ctx.moveTo(4, cy);
-    ctx.lineTo(w - 4, cy);
-    ctx.stroke();
 
-    // A sweep, so the radar looks alive.
-    const sweep = state.time * 1.6 % (Math.PI * 2);
+    // A hard sweep line, so the display looks alive without a gradient beam.
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(sweep);
-    const beam = ctx.createLinearGradient(0, 0, w / 2, 0);
-    beam.addColorStop(0, 'rgba(90, 220, 180, 0.22)');
-    beam.addColorStop(1, 'rgba(90, 220, 180, 0)');
-    ctx.fillStyle = beam;
+    ctx.rotate(state.time * 1.6);
+    ctx.strokeStyle = '#2f6b4f';
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.arc(0, 0, w / 2 - 3, -0.5, 0.5);
-    ctx.closePath();
-    ctx.fill();
+    ctx.lineTo(w / 2 - 2, 0);
+    ctx.stroke();
     ctx.restore();
 
-    // Blips.
+    // Blips: solid squares, no additive blending and no fade. Distance is shown
+    // by size instead, which is the only depth cue a flat grid can carry.
     const col = Math.floor(state.ship.x / TILE);
     const row = Math.floor(state.ship.y / TILE);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
     for (let dy = -range; dy <= range; dy += 1) {
       for (let dx = -range; dx <= range; dx += 1) {
         const i = (row + dy) * COLS + (col + dx);
@@ -277,23 +266,22 @@ export function createHud(root) {
         if (dist > range) continue;
         const ore = ORE_BY_ID[state.world.ore[i]];
         const tone = kind === KIND.LAVA ? '#ff5a12' : kind === KIND.GAS ? '#7dff6a' : ore.color;
-        const bx = cx + dx * scale;
-        const by = cy + dy * scale;
-        const fade = 1 - dist / range;
-        const pulse = 0.6 + 0.4 * Math.sin(state.time * 4 + dist);
-        ctx.globalAlpha = fade * 0.85 * pulse;
+        const size = dist < range * 0.4 ? 4 : dist < range * 0.75 ? 3 : 2;
         ctx.fillStyle = tone;
-        const size = kind === KIND.ORE && ore.tier >= 3 ? 3 : 2;
-        ctx.fillRect(bx - size / 2, by - size / 2, size, size);
+        ctx.fillRect(
+          Math.round(cx + dx * scale - size / 2),
+          Math.round(cy + dy * scale - size / 2),
+          size, size,
+        );
       }
     }
-    ctx.restore();
 
     // The ship.
     ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(Math.round(cx) - 3, Math.round(cy) - 3, 6, 6);
+    ctx.strokeStyle = '#0b0d14';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(cx) - 2.5, Math.round(cy) - 2.5, 5, 5);
   }
 
   /* ---------------- public ---------------- */

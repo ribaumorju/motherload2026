@@ -35,13 +35,12 @@
       import { createCamera, resizeCamera, updateCamera, camOrigin } from '../src/render/camera.js';
       import { buildAtlas } from '../src/render/atlas.js';
       import {
-        drawSky, drawSurface, drawTiles, drawOreGlow, drawNatas, drawLighting,
-        createLightLayer, collectLights,
+        drawSky, drawSurface, drawTiles, drawNatas,
       } from '../src/render/world.js';
       import { drawShip } from '../src/render/ship.js';
       import {
         createFx, updateFx, drawDust, drawBubbles, drawSparks, drawGasClouds,
-        drawPops, drawVignette, drawCrt, spawnOreBurst,
+        drawPops, drawHeatTint, drawCrt, spawnOreBurst,
       } from '../src/render/fx.js';
       import { createHud } from '../src/hud.js';
       import { ROWS, SKY_ROWS, TILE, ORES, COLS } from '../src/config.js';
@@ -105,7 +104,6 @@
 
         updateCamera(cam, state.ship, 0.016);
         const origin = camOrigin(cam);
-        const layer = createLightLayer();
 
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.fillStyle = '#04060c';
@@ -114,7 +112,6 @@
         drawSky(ctx, cam, origin, width, height);
         drawSurface(ctx, origin, state.time);
         drawTiles(ctx, state.world, origin, width, height, atlas);
-        drawOreGlow(ctx, state.world, origin, width, height, state.time);
         drawNatas(ctx, origin, state.time);
         drawGasClouds(ctx, state, origin);
         drawBubbles(ctx, fx, origin);
@@ -123,12 +120,8 @@
         drawSparks(ctx, state, origin);
         drawPops(ctx, state, origin);
 
-        const lights = collectLights(state.world, origin, width, height);
-        const lightCanvas = drawLighting(layer, width, height, origin, state.ship, state.depth, lights, state.time);
-        ctx.drawImage(lightCanvas, 0, 0, width, height);
-
-        drawVignette(ctx, width, height, state.depth, state.ship.heat, state.time);
-        drawCrt(ctx, width, height, state.time);
+        drawHeatTint(ctx, width, height, state.ship.heat, state.time);
+        drawCrt(ctx, width, height);
 
         // The HUD is sized by its own CSS, so it is told the stage's dimensions.
         app.style.setProperty('--stage-w', `${width}px`);
