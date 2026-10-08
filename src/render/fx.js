@@ -15,6 +15,7 @@ import { TILE, COLS, ROWS } from '../config.js';
 import { KIND, kindOf, rowDepth } from '../sim/world.js';
 import { clamp } from '../sim/physics.js';
 import { rockAt } from './palette.js';
+import { money } from '../teksti.js';
 
 const MAX_DUST = 260;
 
@@ -193,9 +194,9 @@ export function drawPops(ctx, s, origin) {
     ctx.fillText(pop.text, x, y);
     if (pop.value) {
       ctx.font = `400 ${Math.round(14 * scale)}px "VT323", ui-monospace, monospace`;
-      ctx.strokeText(`$${pop.value.toLocaleString()}`, x, y + 13);
+      ctx.strokeText(money(pop.value), x, y + 13);
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(`$${pop.value.toLocaleString()}`, x, y + 13);
+      ctx.fillText(money(pop.value), x, y + 13);
     }
   }
   ctx.restore();

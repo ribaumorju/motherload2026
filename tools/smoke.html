@@ -183,12 +183,24 @@
           for (let i = 0; i < 5; i += 1) hud.update(state, { lowFuel: false, lowHull: false });
           const cash = root.querySelector('.stat-cash .stat-value');
           if (!cash) return 'no cash readout in the DOM';
-          if (!cash.textContent.includes('$')) return `cash reads "${cash.textContent}"`;
+          if (!cash.textContent.includes('€')) return `cash reads "${cash.textContent}"`;
           const depth = root.querySelector('.stat-depth .stat-value');
           if (!depth || !depth.textContent.includes('ft')) return 'no depth readout';
           if (!root.querySelector('.gauge')) return 'no depth gauge';
           if (!root.querySelector('.radar')) return 'no radar';
           if (root.querySelectorAll('.meter').length !== 3) return 'wrong number of meters';
+          /**
+           * The Slovenian labels are longer than the English ones they replaced
+           * ("GORIVO" against "FUEL", "PRORAČUN" against "CREDITS"), and a label
+           * that no longer fits its column wraps or spills rather than throwing.
+           * An overflowing grid item reports a wider scroll box than its client
+           * box, which is the cheapest way to catch it without a screenshot.
+           */
+          for (const node of root.querySelectorAll('.meter-name, .stat-label, .stat-value')) {
+            if (node.scrollWidth > node.clientWidth + 1) {
+              return `"${node.textContent}" overflows its column (${node.scrollWidth} > ${node.clientWidth})`;
+            }
+          }
           hud.toast('hello', 'info', 100);
           if (!root.querySelector('.toast')) return 'toast did not appear';
           return true;
@@ -236,6 +248,56 @@
           if (G.drillPower(s) <= before) return 'buying the first drill changed nothing';
           root.querySelector('.modal-close').click();
           return true;
+        });
+
+        await check('the RNOV branding reaches the DOM, and the text keeps its diacritics', () => {
+          /**
+           * The branding has to survive all the way to the screen, and the
+           * Slovenian letters have to be real characters rather than escaped or
+           * mangled bytes - a half-converted file is the failure this guards.
+           *
+           * The letters are checked as *code points* against the rendered text,
+           * not as literals in this file: an assertion written in the same
+           * alphabet it is testing cannot tell a good conversion from a bad one.
+           *
+           * Note the agency name itself is plain ASCII - "Razvoj in nadzor
+           * oskrbovalne verige" has no carons in it - so the letters are looked
+           * for in the help screen, where the prose actually uses them.
+           */
+          const root = document.getElementById('app');
+          const t = ME.showTitle(root, { onStart() {}, onContinue() {}, hasSave: false, onHelp() {} });
+          const mark = root.querySelector('.agency-mark');
+          const full = root.querySelector('.agency-full');
+          if (!mark || !full) return 'the RNOV block is not on the title screen';
+          if (mark.textContent !== 'RNOV') return `the agency mark reads "${mark.textContent}"`;
+          const want = 'Razvoj in nadzor oskrbovalne verige';
+          if (full.textContent !== want) return `the agency name reads "${full.textContent}"`;
+          t.close();
+
+          ME.showHelp(root);
+          const prose = Array.from(root.querySelectorAll('.help-grid, .help-list, .help-head'))
+            .map((n) => n.textContent).join(' ');
+          const codes = new Set(Array.from(prose).map((c) => c.charCodeAt(0)));
+          // [name, lowercase, uppercase] for c-caron, s-caron, z-caron.
+          for (const [name, lower, upper] of [
+            ['c-caron', 0x010D, 0x010C],
+            ['s-caron', 0x0161, 0x0160],
+            ['z-caron', 0x017E, 0x017D],
+          ]) {
+            if (!codes.has(lower) && !codes.has(upper)) {
+              return `the help text has lost ${name} - the file is not proper UTF-8`;
+            }
+          }
+          root.querySelector('.modal-close').click();
+
+          // And the money is euros, grouped with dots.
+          ME.showShop(root, state, { onSpend() {}, onClose() {}, initialTab: 'counter' });
+          const cash = root.querySelector('.shop-cash strong');
+          if (!cash || !/^\d{1,3}(\.\d{3})*\s€$/.test(cash.textContent)) {
+            return `the shop shows cash as "${cash && cash.textContent}"`;
+          }
+          root.querySelector('.modal-close').click();
+          return ok(`RNOV title, carons intact, cash ${cash.textContent}`);
         });
 
         /* ---------- input ---------- */
@@ -560,6 +622,9 @@
           if (!html.includes('id="app"')) return 'no app root in index.html';
           if (!html.includes('./src/main.js')) return 'main.js is not loaded by index.html';
           if (!html.includes('./styles/game.css')) return 'game.css is not linked';
+          // The document language drives screen readers and hyphenation, and it
+          // is the one part of a localisation that is invisible if it is wrong.
+          if (!/lang="sl"/.test(html)) return 'index.html does not declare lang="sl"';
           return true;
         });
 
@@ -567,7 +632,13 @@
           const res = await fetch('../styles/game.css');
           if (!res.ok) return `game.css is ${res.status}`;
           const css = await res.text();
-          for (const sel of ['.hud', '.meter-fill', '.modal-card', '.toast', '.radar', '.gauge']) {
+          // Each of these is an element the code creates, so a missing rule means
+          // an unstyled element on screen - which is how the RNOV badge would
+          // fail if someone renamed the class in one file and not the other.
+          for (const sel of [
+            '.hud', '.meter-fill', '.modal-card', '.toast', '.radar', '.gauge',
+            '.agency-mark', '.agency-full', '.dock-note',
+          ]) {
             if (!css.includes(sel)) return `game.css has no ${sel} rule`;
           }
           return true;

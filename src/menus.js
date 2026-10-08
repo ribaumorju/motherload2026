@@ -16,8 +16,7 @@ import {
   upgradeTier, maxFuel, maxHull, buyUpgrade, buyItem, refuel, repair,
   sellCargo, cargoValue, cargoManifest, drillPower,
 } from './sim/game.js';
-
-const money = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+import { money, grouped, RNOV } from './teksti.js';
 
 /** A tiny DOM builder, so the markup below stays readable. */
 function h(tag, props = {}, ...children) {
@@ -90,23 +89,29 @@ function modal(root, { title, subtitle, wide = false, onClose }) {
 
 export function showTitle(root, { onStart, onContinue, hasSave, onHelp }) {
   const card = h('div', { class: 'modal-card title-card' },
+    // The agency block. The joke is that a state body built a mining simulator
+    // and stamped it like a form.
+    h('div', { class: 'agency' },
+      h('span', { class: 'agency-mark', text: RNOV.short }),
+      h('span', { class: 'agency-full', text: RNOV.full }),
+    ),
     h('h1', { class: 'title-name' },
       h('span', { class: 'title-deep', text: 'DEEP' }),
       h('span', { class: 'title-core', text: 'CORE' }),
     ),
-    h('p', { class: 'title-tag', text: 'The mine goes down 12,800 feet. It does not go back up.' }),
+    h('p', { class: 'title-tag', text: 'Rudnik gre 12.800 čevljev navzdol. Nazaj ne gre.' }),
     h('div', { class: 'title-actions' },
       hasSave
-        ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { remove(); onContinue(); } }, 'CONTINUE')
+        ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { remove(); onContinue(); } }, 'NADALJUJ')
         : null,
       h('button', {
         class: hasSave ? 'btn' : 'btn btn-primary',
         type: 'button',
         onclick: () => { remove(); onStart(); },
-      }, hasSave ? 'NEW MINE' : 'START DRILLING'),
-      h('button', { class: 'btn btn-ghost', type: 'button', onclick: onHelp }, 'HOW TO PLAY'),
+      }, hasSave ? 'NOV RUDNIK' : 'ZAČNI VRTATI'),
+      h('button', { class: 'btn btn-ghost', type: 'button', onclick: onHelp }, 'NAVODILA'),
     ),
-    h('p', { class: 'title-foot', text: 'A modern remake of Motherload. Arrows or WASD to fly, hold Space to drill.' }),
+    h('p', { class: 'title-foot', text: `${RNOV.tagline} ${RNOV.version}. RNOV ne odgovarja za izgubljene tovore.` }),
   );
   const backdrop = h('div', { class: 'modal modal-title' }, card);
   root.append(backdrop);
@@ -120,13 +125,13 @@ export function showTitle(root, { onStart, onContinue, hasSave, onHelp }) {
 
 export function showHelp(root, onClose) {
   const rows = [
-    ['Move', 'Arrow keys or WASD'],
-    ['Drill', 'Push into rock - the bit cuts whichever way you are pointing'],
-    ['Drill down', 'Hold Space (or Shift / J) to cut straight down on the spot'],
-    ['Dock', 'Stand under a building, press E'],
-    ['Pause', 'Esc'],
-    ['Mute', 'M'],
-    ['Phone', 'Left half of the screen is a stick, right half drills'],
+    ['Premik', 'Puščice ali WASD'],
+    ['Vrtanje', 'Zapelji se v kamen - sveder reže v smer, v katero gledaš'],
+    ['Vrtaj dol', 'Drži preslednico (ali Shift / J) za vrtanje naravnost navzdol'],
+    ['Pristanek', 'Ustavi se pod stavbo in pritisni E'],
+    ['Premor', 'Esc'],
+    ['Zvok', 'M'],
+    ['Telefon', 'Leva polovica zaslona je palica, desna vrta'],
   ];
   const table = h('div', { class: 'help-grid' },
     rows.flatMap(([k, v]) => [
@@ -135,23 +140,23 @@ export function showHelp(root, onClose) {
     ]));
 
   const goals = h('ul', { class: 'help-list' },
-    h('li', { text: 'Dig for ore. Your hold is measured in kilograms, not in tiles - the heavy cheap stuff fills it fast.' }),
-    h('li', { text: 'Sell at the Mineral Processor. Fuel up and repair at the depot and the supply station.' }),
-    h('li', { text: 'Green seams are gas. They look like rock until your drill touches one. They hurt.' }),
-    h('li', { text: 'Orange pools are lava. The drill will not cut them and getting close cooks you, so go around - or blow a hole with explosives.' }),
-    h('li', { text: 'You can drill up. It is slower and dearer than flying, but it is the way out if you drop into a cavern.' }),
-    h('li', { text: 'Running out of fuel or wrecking the hull costs you the hold, never your upgrades.' }),
-    h('li', { text: 'Something is at the bottom of the mine. It has been waiting.' }),
+    h('li', { text: 'Koplji rudo. Tovor se meri v kilogramih, ne v kvadratih - težka poceni ruda ga napolni hitro.' }),
+    h('li', { text: 'Prodaj na odkupu rude. Gorivo in popravila dobiš na črpalki in v servisu.' }),
+    h('li', { text: 'Zelene žile so plin. Videti so kot kamen, dokler se jih sveder ne dotakne. Bolijo.' }),
+    h('li', { text: 'Oranžni bazeni so lava. Sveder je ne reže, zato pojdi okoli - ali si pot naredi z eksplozivom.' }),
+    h('li', { text: 'Vrtati znaš tudi navzgor. Počasneje in dražje je od letenja, a to je izhod, če padeš v votlino.' }),
+    h('li', { text: 'Če zmanjka goriva ali razbiješ trup, izgubiš tovor, nikoli nadgradenj.' }),
+    h('li', { text: 'Na dnu rudnika je nekaj. Čaka že dolgo.' }),
   );
 
-  const m = modal(root, { title: 'How to play', subtitle: 'Two verbs: fly, and dig. Everything else is consequences.' });
-  m.panel.append(table, h('h3', { class: 'help-head', text: 'The loop' }), goals,
+  const m = modal(root, { title: 'Navodila', subtitle: 'Dve dejanji: leti in vrta. Vse ostalo so posledice.' });
+  m.panel.append(table, h('h3', { class: 'help-head', text: 'Kako se igra' }), goals,
     h('div', { class: 'modal-actions' },
       h('button', {
         class: 'btn btn-primary',
         type: 'button',
         onclick: () => { m.close(); if (onClose) onClose(); },
-      }, 'GOT IT')));
+      }, 'RAZUMEM')));
   return m;
 }
 
@@ -160,23 +165,23 @@ export function showHelp(root, onClose) {
 /* ------------------------------------------------------------------ */
 
 export function showPause(root, { onResume, onSave, onQuit, muted, onToggleSound }) {
-  const m = modal(root, { title: 'Paused', subtitle: 'The mine is not going anywhere.', onClose: onResume });
+  const m = modal(root, { title: 'Premor', subtitle: 'Rudnik ne bo šel nikamor.', onClose: onResume });
   m.panel.append(h('div', { class: 'modal-actions column' },
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => m.close() }, 'RESUME'),
-    h('button', { class: 'btn', type: 'button', onclick: () => { onSave(); } }, 'SAVE NOW'),
+    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => m.close() }, 'NAPREJ'),
+    h('button', { class: 'btn', type: 'button', onclick: () => { onSave(); } }, 'SHRANI ZDAJ'),
     h('button', {
       class: 'btn',
       type: 'button',
       onclick: (event) => {
         onToggleSound();
-        event.currentTarget.textContent = muted ? 'SOUND: OFF' : 'SOUND: ON';
+        event.currentTarget.textContent = muted ? 'ZVOK: IZKLOPLJEN' : 'ZVOK: VKLOPLJEN';
       },
-    }, muted ? 'SOUND: OFF' : 'SOUND: ON'),
+    }, muted ? 'ZVOK: IZKLOPLJEN' : 'ZVOK: VKLOPLJEN'),
     h('button', {
       class: 'btn btn-danger',
       type: 'button',
       onclick: () => { m.close(); onQuit(); },
-    }, 'QUIT TO TITLE'),
+    }, 'NA ZAČETEK'),
   ));
   return m;
 }
@@ -192,8 +197,8 @@ export function showPause(root, { onResume, onSave, onQuit, muted, onToggleSound
  */
 export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' }) {
   const m = modal(root, {
-    title: 'Supply Station',
-    subtitle: 'Buy the next tier. Everything is permanent.',
+    title: 'RNOV Servis in trgovina',
+    subtitle: 'Kupi naslednjo stopnjo. Vse je trajno.',
     wide: true,
     onClose,
   });
@@ -209,10 +214,10 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
 
   const rebuild = () => {
     const cashTag = h('div', { class: 'shop-cash' },
-      h('span', { text: 'CREDITS' }), h('strong', { text: money(state.cash) }));
+      h('span', { text: 'PRORAČUN' }), h('strong', { text: money(state.cash) }));
 
     tabs.textContent = '';
-    for (const [key, label] of [['ship', 'SHIP'], ['gear', 'SUPPLIES'], ['counter', 'COUNTER']]) {
+    for (const [key, label] of [['ship', 'PLOVILO'], ['gear', 'ZALOGE'], ['counter', 'BLAGAJNA']]) {
       tabs.append(h('button', {
         class: `tab${key === active ? ' is-active' : ''}`,
         type: 'button',
@@ -257,7 +262,7 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
               }
             },
           }, h('span', { text: next.name }), h('em', { text: money(next.price) }))
-          : h('span', { class: 'shop-maxed', text: 'MAXED' }),
+          : h('span', { class: 'shop-maxed', text: 'NAJVEČ' }),
       );
       ship.append(row);
     }
@@ -272,7 +277,7 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
       gear.append(h('div', { class: 'shop-row' },
         h('div', { class: 'shop-info' },
           h('span', { class: 'shop-label', text: item.name }),
-          h('strong', { class: 'shop-tier', text: `${owned} / ${item.max} carried` }),
+          h('strong', { class: 'shop-tier', text: `${owned} / ${item.max} v tovoru` }),
           h('span', { class: 'shop-blurb', text: item.blurb }),
         ),
         h('button', {
@@ -287,10 +292,10 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
               onSpend('deny');
             }
           },
-        }, h('span', { text: 'BUY' }), h('em', { text: money(item.price) })),
+        }, h('span', { text: 'KUPI' }), h('em', { text: money(item.price) })),
       ));
     }
-    gear.append(h('p', { class: 'shop-note', text: 'Press 1-4 in the mine to use what you are carrying.' }));
+    gear.append(h('p', { class: 'shop-note', text: 'V rudniku pritisni 1-6 za uporabo tega, kar nosiš.' }));
 
     /* --- counter: refuel, repair, sell --- */
     const counter = panes.counter;
@@ -303,9 +308,9 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
 
     counter.append(h('div', { class: 'shop-row' },
       h('div', { class: 'shop-info' },
-        h('span', { class: 'shop-label', text: 'Refuel' }),
-        h('strong', { class: 'shop-tier', text: `${fuelNeed.toFixed(1)} L needed` }),
-        h('span', { class: 'shop-blurb', text: `${money(FUEL_PRICE)} per litre` }),
+        h('span', { class: 'shop-label', text: 'Gorivo' }),
+        h('strong', { class: 'shop-tier', text: `${fuelNeed.toFixed(1)} L potrebnih` }),
+        h('span', { class: 'shop-blurb', text: `${money(FUEL_PRICE)} na liter` }),
       ),
       h('button', {
         class: 'btn btn-buy',
@@ -316,14 +321,14 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
           onSpend(spent > 0 ? 'purchase' : 'deny');
           rebuild();
         },
-      }, h('span', { text: 'FILL TANK' }), h('em', { text: money(fuelNeed * FUEL_PRICE) })),
+      }, h('span', { text: 'NATOČI' }), h('em', { text: money(fuelNeed * FUEL_PRICE) })),
     ));
 
     counter.append(h('div', { class: 'shop-row' },
       h('div', { class: 'shop-info' },
-        h('span', { class: 'shop-label', text: 'Repair' }),
-        h('strong', { class: 'shop-tier', text: `${hullNeed.toFixed(0)} HP missing` }),
-        h('span', { class: 'shop-blurb', text: `${money(REPAIR_PRICE)} per hull point` }),
+        h('span', { class: 'shop-label', text: 'Popravilo' }),
+        h('strong', { class: 'shop-tier', text: `${hullNeed.toFixed(0)} HP manjka` }),
+        h('span', { class: 'shop-blurb', text: `${money(REPAIR_PRICE)} na točko trupa` }),
       ),
       h('button', {
         class: 'btn btn-buy',
@@ -334,19 +339,19 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
           onSpend(spent > 0 ? 'purchase' : 'deny');
           rebuild();
         },
-      }, h('span', { text: 'REPAIR HULL' }), h('em', { text: money(hullNeed * REPAIR_PRICE) })),
+      }, h('span', { text: 'POPRAVI TRUP' }), h('em', { text: money(hullNeed * REPAIR_PRICE) })),
     ));
 
     const entries = cargoManifest(state);
     counter.append(h('div', { class: 'shop-row is-sell' },
       h('div', { class: 'shop-info' },
-        h('span', { class: 'shop-label', text: 'Sell the hold' }),
-        h('strong', { class: 'shop-tier', text: worth > 0 ? money(worth) : 'nothing aboard' }),
+        h('span', { class: 'shop-label', text: 'Prodaj tovor' }),
+        h('strong', { class: 'shop-tier', text: worth > 0 ? money(worth) : 'nič na krovu' }),
         h('span', {
           class: 'shop-blurb',
           text: entries.length
             ? entries.map((e) => `${e.ore.name} x${e.n}`).join(', ')
-            : 'Dig something up first.',
+            : 'Najprej kaj izkoplji.',
         }),
       ),
       h('button', {
@@ -358,23 +363,23 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
           if (paid > 0) onSpend('sale', paid);
           rebuild();
         },
-      }, h('span', { text: 'SELL ALL' }), h('em', { text: money(worth) })),
+      }, h('span', { text: 'PRODAJ VSE' }), h('em', { text: money(worth) })),
     ));
 
     // Stats, because a run is more interesting with a scoreboard.
     counter.append(h('div', { class: 'shop-stats' },
-      h('span', {}, 'Trips ', h('strong', { text: String(state.stats.trips) })),
-      h('span', {}, 'Tiles dug ', h('strong', { text: String(state.stats.dug) })),
-      h('span', {}, 'Earned ', h('strong', { text: money(state.stats.earned) })),
-      h('span', {}, 'Wrecks ', h('strong', { text: String(state.stats.deaths) })),
-      h('span', {}, 'Drill ', h('strong', { text: `${drillPower(state)} ft/s` })),
+      h('span', {}, 'Voženj ', h('strong', { text: String(state.stats.trips) })),
+      h('span', {}, 'Izkopanih ', h('strong', { text: String(state.stats.dug) })),
+      h('span', {}, 'Zasluženo ', h('strong', { text: money(state.stats.earned) })),
+      h('span', {}, 'Razbitih ', h('strong', { text: String(state.stats.deaths) })),
+      h('span', {}, 'Sveder ', h('strong', { text: `${drillPower(state)} ft/s` })),
     ));
   };
 
   rebuild();
   body.append(tabs, panes.ship, panes.gear, panes.counter);
   m.panel.append(body, h('div', { class: 'modal-actions' },
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => m.close() }, 'BACK TO THE MINE')));
+    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => m.close() }, 'NAZAJ V RUDNIK')));
   return m;
 }
 
@@ -384,27 +389,27 @@ export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' })
 
 export function showEnd(root, state, { won, onRestart, onContinue }) {
   const m = modal(root, {
-    title: won ? 'THE MOTHER LODE' : 'HULL BREACH',
+    title: won ? 'MATIČNA ŽILA' : 'TRUP JE POPUSTIL',
     subtitle: won
-      ? 'Mr. Natas was down there all along, and he was not happy to see you.'
-      : 'The pod is gone. The upgrades are not.',
+      ? 'Gospod Natas je bil tam vse od začetka in ni bil vesel, da ste ga našli. Ponudil vam je službo.'
+      : 'Plovila ni več. Nadgradnje so ostale.',
   });
 
   const last = state.deaths[state.deaths.length - 1];
   m.panel.append(
     h('div', { class: 'end-stats' },
-      h('div', {}, h('span', { text: 'Deepest' }), h('strong', { text: `${Math.round(state.maxDepth).toLocaleString('en-US')} ft` })),
-      h('div', {}, h('span', { text: 'Earned' }), h('strong', { text: money(state.stats.earned) })),
-      h('div', {}, h('span', { text: 'Tiles dug' }), h('strong', { text: String(state.stats.dug) })),
-      h('div', {}, h('span', { text: 'Trips home' }), h('strong', { text: String(state.stats.trips) })),
-      h('div', {}, h('span', { text: 'Wrecks' }), h('strong', { text: String(state.stats.deaths) })),
+      h('div', {}, h('span', { text: 'Najgloblje' }), h('strong', { text: `${grouped(state.maxDepth)} ft` })),
+      h('div', {}, h('span', { text: 'Zasluženo' }), h('strong', { text: money(state.stats.earned) })),
+      h('div', {}, h('span', { text: 'Izkopanih' }), h('strong', { text: String(state.stats.dug) })),
+      h('div', {}, h('span', { text: 'Voženj domov' }), h('strong', { text: String(state.stats.trips) })),
+      h('div', {}, h('span', { text: 'Razbitih plovil' }), h('strong', { text: String(state.stats.deaths) })),
     ),
     last && !won
-      ? h('p', { class: 'end-cause', text: `Cause of loss: ${last.cause} at ${last.depth.toLocaleString('en-US')} ft.` })
+      ? h('p', { class: 'end-cause', text: `Vzrok izgube: ${last.cause} na ${grouped(last.depth)} ft.` })
       : null,
     h('div', { class: 'modal-actions' },
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { m.close(); onContinue(); } }, 'KEEP DIGGING'),
-      h('button', { class: 'btn btn-danger', type: 'button', onclick: () => { m.close(); onRestart(); } }, 'NEW MINE'),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { m.close(); onContinue(); } }, 'KOPLJI NAPREJ'),
+      h('button', { class: 'btn btn-danger', type: 'button', onclick: () => { m.close(); onRestart(); } }, 'NOV RUDNIK'),
     ),
   );
   return m;

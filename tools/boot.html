@@ -145,7 +145,11 @@
         await check('the HUD is showing live values, not placeholders', () => {
           const cash = document.querySelector('.stat-cash .stat-value');
           const depth = document.querySelector('.stat-depth .stat-value');
-          if (!cash || !/\$/.test(cash.textContent)) return `cash reads "${cash && cash.textContent}"`;
+          // Euros, grouped Slovenian-style: "5.000 €". The currency and the
+          // separator are both localisation, so this asserts on both.
+          if (!cash || !/\d\.\d{3}\s€/.test(cash.textContent)) {
+            return `cash reads "${cash && cash.textContent}" - expected grouped euros`;
+          }
           if (!depth || !/ft/.test(depth.textContent)) return 'depth is not formatted';
           const fill = document.querySelector('.bar-fuel .meter-fill');
           if (!fill) return 'no fuel bar';

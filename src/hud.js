@@ -19,8 +19,8 @@ import { KIND, kindOf } from './sim/world.js';
 import { load, maxFuel, maxHull, cargoCap, cargoManifest, cargoValue, atFacility } from './sim/game.js';
 import { clamp } from './sim/physics.js';
 import { bandIndexAt } from './render/palette.js';
+import { money, grouped } from './teksti.js';
 
-const money = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
 const num = (n, d = 0) => Number(n).toFixed(d);
 
 export function createHud(root) {
@@ -38,17 +38,17 @@ export function createHud(root) {
   // Top-left: the numbers you always want.
   const topLeft = el('div', 'panel hud-top');
   const cashEl = el('div', 'stat stat-cash');
-  const cashLabel = el('span', 'stat-label', 'CREDITS');
+  const cashLabel = el('span', 'stat-label', 'PRORAČUN');
   const cashValue = el('strong', 'stat-value', '$0');
   cashEl.append(cashLabel, cashValue);
 
   const depthEl = el('div', 'stat stat-depth');
-  const depthLabel = el('span', 'stat-label', 'DEPTH');
+  const depthLabel = el('span', 'stat-label', 'GLOBINA');
   const depthValue = el('strong', 'stat-value', '0 ft');
   depthEl.append(depthLabel, depthValue);
 
   const bestEl = el('div', 'stat stat-best');
-  const bestLabel = el('span', 'stat-label', 'DEEPEST');
+  const bestLabel = el('span', 'stat-label', 'REKORD');
   const bestValue = el('strong', 'stat-value', '0 ft');
   bestEl.append(bestLabel, bestValue);
 
@@ -74,9 +74,9 @@ export function createHud(root) {
   const meters = el('div', 'panel hud-meters');
   const bars = {};
   for (const [key, label, cls] of [
-    ['fuel', 'FUEL', 'bar-fuel'],
-    ['hull', 'HULL', 'bar-hull'],
-    ['cargo', 'HOLD', 'bar-cargo'],
+    ['fuel', 'GORIVO', 'bar-fuel'],
+    ['hull', 'TRUP', 'bar-hull'],
+    ['cargo', 'TOVOR', 'bar-cargo'],
   ]) {
     const row = el('div', `meter ${cls}`);
     const name = el('span', 'meter-name', label);
@@ -324,11 +324,11 @@ export function createHud(root) {
     manifest.textContent = '';
 
     const head = el('div', 'manifest-head');
-    head.append(el('span', null, 'MANIFEST'), el('strong', null, money(cargoValue(state))));
+    head.append(el('span', null, 'TOVORNI LIST'), el('strong', null, money(cargoValue(state))));
     manifest.append(head);
 
     if (!entries.length) {
-      manifest.append(el('div', 'manifest-empty', 'Hold empty. Press E to refuel and repair.'));
+      manifest.append(el('div', 'manifest-empty', 'Tovor je prazen. Pritisni E za gorivo in popravilo.'));
       return;
     }
     for (const entry of entries) {
@@ -351,14 +351,20 @@ export function createHud(root) {
       if (!prompt.hidden) prompt.hidden = true;
       return;
     }
-    const action = near.key === 'fuel' ? 'Press E to refuel'
-      : near.key === 'sell' ? 'Press E to sell the hold'
-        : 'Press E to open the supply station';
-    const key = `${near.key}|${action}`;
+    const action = near.key === 'fuel' ? 'E - natoči gorivo'
+      : near.key === 'sell' ? 'E - prodaj tovor'
+        : 'E - odpri servis';
+    const key = `${near.key}|${action}|${near.note || ''}`;
     if (prompt.dataset.key !== key) {
       prompt.dataset.key = key;
       prompt.textContent = '';
-      prompt.append(el('strong', null, near.name), el('span', null, action));
+      prompt.append(
+        el('strong', null, near.name),
+        el('span', null, action),
+        // The office hours are the joke, so they get their own line rather than
+        // being buried in the action text.
+        near.note ? el('em', 'dock-note', near.note) : null,
+      );
     }
     if (prompt.hidden) prompt.hidden = false;
   }
@@ -369,8 +375,8 @@ export function createHud(root) {
    */
   function update(state, opts = {}) {
     set(cashValue, money(state.cash));
-    set(depthValue, `${Math.round(state.depth).toLocaleString('en-US')} ft`);
-    set(bestValue, `${Math.round(state.maxDepth).toLocaleString('en-US')} ft`);
+  set(depthValue, `${grouped(state.depth)} ft`);
+  set(bestValue, `${grouped(state.maxDepth)} ft`);
 
     const fuelFrac = state.ship.fuel / maxFuel(state);
     const hullFrac = state.ship.hull / maxHull(state);

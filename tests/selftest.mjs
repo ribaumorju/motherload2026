@@ -14,7 +14,11 @@
 import assert from 'node:assert/strict';
 import {
   COLS, ROWS, SKY_ROWS, TILE, ORES, ORE_BY_ID, MAX_TIER, PHYS, START_CASH, LAVA,
+  UPGRADES, UPGRADE_KEYS, ITEMS, FACILITIES, DEPTH_FT,
 } from '../src/config.js';
+import {
+  money, grouped, RNOV, MEMOS, MILESTONES, reachedCount, findQuip,
+} from '../src/teksti.js';
 import { World, KIND, kindOf, variantOf, pack, EMPTY, rowDepth } from '../src/sim/world.js';
 import { makeRng, hash2 } from '../src/sim/rng.js';
 import {
@@ -986,6 +990,88 @@ test('an out-of-range hole index is ignored', () => {
   const restored = deserialize(data);
   assert.ok(restored);
   assert.equal(kindOf(restored.world.tiles[100]), KIND.EMPTY);
+});
+
+/* ------------------------------------------------------------------ */
+console.log('\n--- besedilo in denar (the words, and the money) ---');
+
+test('money is in euros and grouped the Slovenian way', () => {
+  // A dot for thousands, a space before the sign. The tests assert on this exact
+  // shape, which is the whole reason it is hand-rolled instead of trusting
+  // `toLocaleString` to agree between the browser and Node.
+  assert.equal(money(0), '0 €');
+  assert.equal(money(999), '999 €');
+  assert.equal(money(5000), '5.000 €');
+  assert.equal(money(12800), '12.800 €');
+  assert.equal(money(50000000), '50.000.000 €');
+  assert.equal(money(1234.4), '1.234 €');
+  assert.equal(money(1234567), '1.234.567 €');
+  assert.equal(grouped(12800), '12.800');
+});
+
+test('the branding is the agency it says it is', () => {
+  assert.equal(RNOV.short, 'RNOV');
+  assert.equal(RNOV.full, 'Razvoj in nadzor oskrbovalne verige');
+});
+
+test('the RNOV memos are in order and the last one is reachable', () => {
+  // `reachedCount` is what stops a memo firing twice, and it only works because
+  // the thresholds are sorted and strictly increasing: an out-of-order entry
+  // would count as already passed before the player got there.
+  for (let i = 1; i < MEMOS.length; i += 1) {
+    assert.ok(MEMOS[i].at > MEMOS[i - 1].at, `memo ${i} is out of order`);
+  }
+  assert.equal(reachedCount(MEMOS, 0), 0, 'a memo fired before the run started');
+  assert.equal(reachedCount(MEMOS, MEMOS[0].at), 1, 'the first memo does not fire at its own depth');
+  assert.equal(reachedCount(MEMOS, 1e9), MEMOS.length);
+  assert.ok(
+    MEMOS[MEMOS.length - 1].at < DEPTH_FT,
+    'the deepest memo is below the bottom of the mine, so nobody would ever read it',
+  );
+});
+
+test('the dug-tile milestones are in order and all reachable', () => {
+  for (let i = 1; i < MILESTONES.length; i += 1) {
+    assert.ok(MILESTONES[i].at > MILESTONES[i - 1].at, `milestone ${i} is out of order`);
+  }
+  assert.equal(reachedCount(MILESTONES, 0), 0);
+  assert.equal(reachedCount(MILESTONES, 1e9), MILESTONES.length);
+});
+
+test('the deep ores have a joke and the cheap ones stay quiet', () => {
+  // The quips double as the "this was worth the trip" signal, so an ore with no
+  // quip says nothing on pickup - which is what stops the surface from burying
+  // the screen in toasts.
+  assert.ok(findQuip(ORE_BY_ID[10]), 'the rarest ore has no line');
+  assert.ok(findQuip(ORE_BY_ID[7]), 'smaragd has no line');
+  assert.equal(findQuip(ORE_BY_ID[1]), null, 'the cheapest ore should not talk');
+  assert.equal(findQuip(null), null, 'a missing ore should not throw');
+});
+
+test('nothing player-facing is blank or still in dollars', () => {
+  // The guard against a half-finished translation. A blank label or a leftover
+  // "$" is exactly the kind of thing that ships because nobody re-read the shop.
+  const check = (label, value) => {
+    assert.ok(typeof value === 'string' && value.trim().length > 0, `${label} is blank`);
+    assert.ok(!value.includes('$'), `${label} still has a dollar sign: ${value}`);
+  };
+  for (const ore of ORES) check(`ore ${ore.key}`, ore.name);
+  for (const key of UPGRADE_KEYS) {
+    check(`upgrade ${key} label`, UPGRADES[key].label);
+    check(`upgrade ${key} blurb`, UPGRADES[key].blurb);
+    check(`upgrade ${key} unit`, UPGRADES[key].unit);
+    for (const t of UPGRADES[key].tiers) check(`upgrade ${key} tier name`, t.name);
+  }
+  for (const item of ITEMS) {
+    check(`item ${item.key} name`, item.name);
+    check(`item ${item.key} blurb`, item.blurb);
+  }
+  for (const facility of FACILITIES) {
+    check(`facility ${facility.key} name`, facility.name);
+    check(`facility ${facility.key} note`, facility.note);
+  }
+  for (const memo of MEMOS) check('memo', memo.text);
+  for (const milestone of MILESTONES) check('milestone', milestone.text);
 });
 
 /* ------------------------------------------------------------------ */

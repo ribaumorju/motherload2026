@@ -35,6 +35,9 @@ import { createHud } from './hud.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { showTitle, showHelp, showPause, showShop, showEnd } from './menus.js';
+import {
+  money, grouped, MEMOS, MILESTONES, reachedCount, findQuip,
+} from './teksti.js';
 
 const FIXED_DT = 1 / 120;
 const MAX_STEPS = 8;
@@ -66,6 +69,9 @@ let endShown = false;
 let bestDepth = readBest();
 let warnedFuel = false;
 let warnedHull = false;
+/** How many RNOV memos and dug-tile milestones have already been announced. */
+let memosFired = 0;
+let milestonesFired = 0;
 
 /** View size in world pixels, and the scale applied to draw them. */
 const view = { w: 800, h: 500, scale: 1, dpr: 1 };
@@ -123,15 +129,15 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 function startNew() {
   state = createState();
   begin();
-  hud.toast('New mine. 12,800 feet to the bottom.', 'info', 3600);
+  hud.toast('Nov rudnik. 12.800 čevljev do dna.', 'info', 3600);
 }
 
 function continueSaved() {
   const loaded = loadFrom();
   state = loaded || createState();
   begin();
-  if (loaded) hud.toast(`Welcome back. ${Math.round(state.depth).toLocaleString('en-US')} ft down.`, 'info');
-  else hud.toast('No save found. Starting a new mine.', 'warn');
+  if (loaded) hud.toast(`Dobrodošli nazaj. ${grouped(state.depth)} ft globoko.`, 'info');
+  else hud.toast('Shranjene igre ni. Začenjamo nov rudnik.', 'warn');
 }
 
 function begin() {
@@ -145,6 +151,8 @@ function begin() {
   endShown = false;
   warnedFuel = false;
   warnedHull = false;
+  memosFired = 0;
+  milestonesFired = 0;
   running = true;
   paused = false;
   accumulator = 0;
@@ -168,7 +176,7 @@ function saveGame(announce = false) {
   if (!state) return;
   const ok = saveTo(state);
   if (announce) {
-    hud.toast(ok ? 'Saved.' : 'Could not save (storage blocked).', ok ? 'info' : 'warn', 1600);
+    hud.toast(ok ? 'Shranjeno.' : 'Shranjevanje ni mogoče (shramba blokirana).', ok ? 'info' : 'warn', 1600);
   }
   if (ok) writeBest(state.maxDepth);
 }
@@ -190,9 +198,11 @@ function handleEvents() {
         const ore = ORE_BY_ID[event.ore];
         audio.orePickup(ore.tier);
         spawnOreBurst(state, event.col, event.row, ore);
-        if (ore.tier >= 3) {
-          hud.toast(`Found ${ore.name} - worth $${ore.value.toLocaleString('en-US')} a tile.`, 'gold', 3000);
-        }
+        // The value and the joke go in one line, because two toasts for one
+        // pickup is one toast too many. Only the ores worth remarking on have a
+        // quip, which is also what keeps the surface ores quiet.
+        const quip = findQuip(ore);
+        if (quip) hud.toast(`${ore.name}, ${money(ore.value)} na kvadrat. ${quip}`, 'gold', 4600);
         break;
       }
       case 'full':
@@ -200,15 +210,15 @@ function handleEvents() {
         break;
       case 'gas':
         audio.gasBurst();
-        hud.toast('Gas pocket! That one cost you.', 'danger');
+        hud.toast('Žep plina! Ta te je stal.', 'danger');
         break;
       case 'lavaBlocked':
         audio.deny();
-        hud.toast('Too hot to drill. Go around.', 'warn', 1800);
+        hud.toast('Prevroče za vrtanje. Pojdi okoli.', 'warn', 1800);
         break;
       case 'blast':
         audio.blast();
-        if (event.ore > 0) hud.toast(`Blast cleared ${event.ore} ore tile${event.ore > 1 ? 's' : ''}.`, 'info');
+        if (event.ore > 0) hud.toast(`Eksplozija je odprla ${event.ore} rudnih kvadratov.`, 'info');
         break;
       case 'dug':
         break;
@@ -234,16 +244,41 @@ function checkWarnings() {
   if (fuelFrac < 0.18 && !warnedFuel) {
     warnedFuel = true;
     audio.alarm();
-    hud.toast('Fuel low. Get to the surface.', 'danger', 3400);
+    hud.toast('Gorivo je pri kraju. Na površje.', 'danger', 3400);
   } else if (fuelFrac > 0.4) {
     warnedFuel = false;
   }
   if (hullFrac < 0.25 && !warnedHull) {
     warnedHull = true;
     audio.alarm();
-    hud.toast('Hull critical.', 'danger', 3400);
+    hud.toast('Trup je kritičen.', 'danger', 3400);
   } else if (hullFrac > 0.5) {
     warnedHull = false;
+  }
+}
+
+/**
+ * Head office writes to you, and it notices how much rock you have moved.
+ *
+ * Both lists are thresholds on a number that only ever grows, so "how many have
+ * I passed" is enough to know which ones still owe a message - no set of fired
+ * ids, nothing to serialise, and it cannot double-fire. The loop rather than an
+ * `if` because a fast descent can cross two thresholds in one frame and the
+ * second memo would otherwise be silently swallowed.
+ *
+ * Presentation only, so it lives here rather than in the sim: a memo changes
+ * nothing about the game, and the sim has no business knowing about toasts.
+ */
+function checkMemos() {
+  while (memosFired < reachedCount(MEMOS, state.maxDepth)) {
+    audio.click();
+    hud.toast(MEMOS[memosFired].text, 'info', 5600);
+    memosFired += 1;
+  }
+  while (milestonesFired < reachedCount(MILESTONES, state.stats.dug)) {
+    audio.click();
+    hud.toast(MILESTONES[milestonesFired].text, 'gold', 5200);
+    milestonesFired += 1;
   }
 }
 
@@ -255,7 +290,7 @@ function openDock() {
   const facility = FACILITIES.find((f) => atFacility(state, f.key));
   if (!facility) {
     audio.deny();
-    hud.toast('Nothing to dock with here.', 'warn', 1400);
+    hud.toast('Tu ni s čim pristati.', 'warn', 1400);
     return;
   }
   audio.dock();
@@ -265,7 +300,7 @@ function openDock() {
     initialTab: tab,
     onSpend: (kind, amount) => {
       if (kind === 'purchase') audio.purchase();
-      else if (kind === 'sale') { audio.sale(amount || 0); hud.toast(`Sold for $${Math.round(amount || 0).toLocaleString('en-US')}.`, 'gold'); }
+      else if (kind === 'sale') { audio.sale(amount || 0); hud.toast(`Prodano za ${money(amount || 0)}.`, 'gold'); }
       else audio.deny();
       saveGame();
     },
@@ -283,19 +318,19 @@ function useSlot(index) {
   if (!item) return;
   if (state.items[item.key] <= 0) {
     audio.deny();
-    hud.toast(`No ${item.name} aboard.`, 'warn', 1400);
+    hud.toast(`${item.name} ni na krovu.`, 'warn', 1400);
     return;
   }
   if (useItem(state, item.key)) {
     if (item.key === 'teleporter' || item.key === 'transmitter') {
       audio.teleport();
-      hud.toast(item.key === 'teleporter' ? 'Teleported. Most of the hold did not make it.' : 'Transmitted home, hold intact.', 'info');
+      hud.toast(item.key === 'teleporter' ? 'Teleportirano. Večina tovora ni prišla.' : 'Poslano domov, tovor cel.', 'info');
     } else if (item.key === 'nanobots') {
       audio.purchase();
-      hud.toast('Nanobots repaired the hull.', 'info');
+      hud.toast('Nanoboti so popravili trup.', 'info');
     } else {
       audio.purchase();
-      hud.toast('Reserve fuel burned.', 'info');
+      hud.toast('Porabljeno rezervno gorivo.', 'info');
     }
   }
 }
@@ -378,6 +413,7 @@ function tick(now) {
 
     handleEvents();
     checkWarnings();
+    checkMemos();
 
     const row = rowOf(state.ship.y);
     const hardness = tileHardness(row);
@@ -390,10 +426,10 @@ function tick(now) {
     if (state.ended && !endShown) {
       endShown = true;
       if (state.ended.type === 'won') {
-        hud.toast('You found him.', 'gold', 6000);
+        hud.toast('Našli ste ga.', 'gold', 6000);
       } else {
         audio.death();
-        hud.toast(`Lost the pod: ${state.ended.cause}. Upgrades kept.`, 'danger', 4200);
+        hud.toast(`Plovilo je izgubljeno: ${state.ended.cause}. Nadgradnje ostajajo.`, 'danger', 4200);
       }
       saveGame();
       showEnd(app, state, {

@@ -1,7 +1,10 @@
 # Deepcore
 
-A browser remake of **Motherload** - drill into a procedurally generated mine,
-haul the ore home, upgrade the pod, and find out what is at the bottom.
+**RNOV Deepcore** - a browser remake of **Motherload**, skinned as an internal
+training simulator for RNOV, *Razvoj in nadzor oskrbovalne verige*.
+
+Drill into a procedurally generated mine, haul the ore home, upgrade the pod, and
+find out what is at the bottom. The game is **in Slovenian and priced in euros**.
 
 Plain HTML, CSS and JavaScript. **No dependencies. No build step. No bundler.**
 
@@ -21,6 +24,50 @@ server is needed at all is that ES modules do not load over `file://`.
 > **Fan project.** Not affiliated with, endorsed by, or connected to XGen Studios.
 > Motherload is their game; this is an unaffiliated tribute reimplementation
 > written from scratch. All code here is original.
+
+---
+
+## The RNOV framing
+
+RNOV is both the skin and the running joke. The premise is that a state agency
+for supply chain development and oversight built a mining simulator to train its
+contractors, and stamped its name on every screen it could reach. The three
+surface buildings are its depots, the credits are a budget, and the depth gauge is
+a report.
+
+A state agency is funnier than a mine, so that is where the easter eggs live:
+
+- **Memos from head office** arrive as you pass each depth milestone and get
+  steadily more absurd as the mine gets more dangerous. The notice about the lava
+  takes thirty working days.
+- **Dug-tile milestones** are head office noticing your effort, and never quite
+  thanking you for it. Nobody moved this much rock even building the highway.
+- **The deep ores have something to say** when you find one - keyed by ore, so a
+  second ruby gets the line you remember rather than a reroll.
+- **The facilities keep office hours**, printed in the dock prompt. The processor
+  takes complaints on form R-3.
+- **The bottom of the mine** is where the joke pays off.
+
+None of it changes the game. The memos are presentation and live in `main.js`;
+the text and the thresholds they hang off live in `src/teksti.js`.
+
+### Language and money
+
+The interface is Slovenian. The **identifiers are not**: `ironium`, `drill`,
+`out of fuel` are save keys and lookup keys, and translating them would break
+every existing save and every test that names one, while buying nothing - no
+player ever reads a key. Only display text is translated.
+
+Money is euros, grouped the Slovenian way (`12.800 €`) by a hand-rolled formatter
+rather than `toLocaleString('sl-SI')`, because the browser and Node do not always
+agree on locale data and the tests assert on the exact string.
+
+The pixel fonts were checked before they were relied on. Both Press Start 2P and
+VT323 declare a `latin-ext` face covering `U+0100-02BA`, so **č, š and ž render in
+the font instead of falling back** to a different typeface mid-word - which is the
+kind of thing that only shows up once the text is in the other language. A
+browser check asserts the carons survive into the DOM as real code points rather
+than as mangled bytes.
 
 ---
 
@@ -143,14 +190,16 @@ npm run balance    # play 30 simulated minutes with a bot and report
 `npm test` runs three layers:
 
 1. **Syntax** - every module parses.
-2. **Sim** (73 checks) - generation is deterministic per seed, the sky is never
+2. **Sim** (79 checks) - generation is deterministic per seed, the sky is never
    breached, the pod never ends up inside rock, ore respects its depth gate,
    gas detonates, lava burns and refuses the drill, explosives clear it anyway,
    pushing into rock drills it without a drill button, a held direction in open
    air does not cut a tile far below the pod, a pod resting on a ledge can still
-   get down, the economy never overdraws, every event the sim emits is handled,
-   the save round-trips, and five simulated minutes of play stay consistent.
-3. **Browser** (48 checks) - the real page in headless Chrome: every module
+   get down, money formats as grouped euros, the memo and milestone thresholds are
+   ordered and reachable, no player-facing string is blank or still in dollars,
+   the economy never overdraws, every event the sim emits is handled, the save
+   round-trips, and five simulated minutes of play stay consistent.
+3. **Browser** (49 checks) - the real page in headless Chrome: every module
    imports, the atlas builds, real frames draw into a real canvas, the HUD
    mounts, every menu opens, every sound cue plays, and a save survives a real
    `localStorage` round trip. A second pass boots the real `src/main.js` and
@@ -275,6 +324,11 @@ within by red.
 - The pod can dig upward, which the original did not allow. Without it, a pod
   that falls into one of the mine's enclosed caverns can never get out, and the
   only escape is to be wrecked on purpose.
+- Distances are still in feet, not metres. The mine's balance - the depth gates,
+  where the hazards start, the eight palette bands, the fuel model - is expressed
+  in feet throughout, and switching the unit means re-deriving all of it rather
+  than relabelling it. Everything else is metric already, because it always was:
+  the tank is litres, the hold is kilograms, the drill is feet per second.
 
 ---
 

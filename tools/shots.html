@@ -135,12 +135,14 @@
 
       /* ---- the sheet ---- */
 
-      stage('SURFACE — the three facilities, sun low', { row: SKY_ROWS, seconds: 1, width: 1200, height: 560, wide: true });
-      stage('DIGGING — 300 ft, ironium and bronzium', { row: 12, seconds: 5, input: { drill: 1 } });
-      stage('MID MINE — 4,200 ft, platinium and gas', { row: 133, seconds: 6, input: { drill: 1 }, seed: 21 });
-      stage('DEEP — 9,000 ft, emerald and ruby country', { row: 283, seconds: 6, input: { drill: 1 }, seed: 44 });
-      stage('LAVA — 10,500 ft, heat warnings on', { row: 330, seconds: 4, input: { drill: 1 }, seed: 88 });
-      stage('THE BOTTOM — Mr. Natas at 12,600 ft', { row: ROWS - 8, seconds: 2, seed: 3 });
+      // The captions end up in the published sheet, so they are in Slovenian
+      // like the game rather than in the language of the person editing this.
+      stage('POVRŠJE - trije RNOV objekti, sonce nizko', { row: SKY_ROWS, seconds: 1, width: 1200, height: 560, wide: true });
+      stage('KOPANJE - 300 ft, železit in bronzit', { row: 12, seconds: 5, input: { drill: 1 } });
+      stage('SREDINA - 4.200 ft, platinovec in plin', { row: 133, seconds: 6, input: { drill: 1 }, seed: 21 });
+      stage('GLOBINA - 9.000 ft, smaragd in rubin', { row: 283, seconds: 6, input: { drill: 1 }, seed: 44 });
+      stage('LAVA - 10.500 ft, opozorila pred vročino', { row: 330, seconds: 4, input: { drill: 1 }, seed: 88 });
+      stage('DNO - gospod Natas na 12.600 ft', { row: ROWS - 8, seconds: 2, seed: 3 });
 
       document.title = 'shots ready';
       try { fetch('/__result__/shots%20ready'); } catch { /* optional */ }

@@ -40,16 +40,16 @@ export const REPAIR_PRICE = 20;
  * diamond as ironium, which flattened the whole progression.
  */
 export const ORES = [
-  { id: 1, key: 'ironium', name: 'Ironium', value: 30, weight: 10, from: 0, rarity: 1, tier: 1, color: '#b98a6a', tint: '#7d5a41', spark: '#ffd9b0' },
-  { id: 2, key: 'bronzium', name: 'Bronzium', value: 60, weight: 10, from: 0, rarity: 0.62, tier: 1, color: '#d08a3c', tint: '#8a5518', spark: '#ffc46b' },
-  { id: 3, key: 'silverium', name: 'Silverium', value: 100, weight: 10, from: 0, rarity: 0.36, tier: 1, color: '#cfd6e4', tint: '#7f8899', spark: '#ffffff' },
-  { id: 4, key: 'goldium', name: 'Goldium', value: 250, weight: 20, from: 1000, rarity: 0.2, tier: 1, color: '#ffd23f', tint: '#a67c00', spark: '#fff3a8' },
-  { id: 5, key: 'platinium', name: 'Platinium', value: 750, weight: 30, from: 3000, rarity: 0.13, tier: 2, color: '#dff4ff', tint: '#7ea3b5', spark: '#ffffff' },
-  { id: 6, key: 'einsteinium', name: 'Einsteinium', value: 2000, weight: 40, from: 5000, rarity: 0.08, tier: 2, color: '#7dffb0', tint: '#2f9b62', spark: '#d6ffe8' },
-  { id: 7, key: 'emerald', name: 'Emerald', value: 5000, weight: 60, from: 6500, rarity: 0.05, tier: 3, color: '#2fd97a', tint: '#12663a', spark: '#b7ffd4' },
-  { id: 8, key: 'ruby', name: 'Ruby', value: 20000, weight: 80, from: 8000, rarity: 0.032, tier: 3, color: '#ff3b5c', tint: '#8c1029', spark: '#ffc2cd' },
-  { id: 9, key: 'diamond', name: 'Diamond', value: 100000, weight: 100, from: 9500, rarity: 0.02, tier: 4, color: '#9fefff', tint: '#4a8fa8', spark: '#ffffff' },
-  { id: 10, key: 'amazonite', name: 'Amazonite', value: 500000, weight: 120, from: 11000, rarity: 0.013, tier: 4, color: '#3fe0d0', tint: '#0f6f68', spark: '#c4fff8' },
+  { id: 1, key: 'ironium', name: 'Železit', value: 30, weight: 10, from: 0, rarity: 1, tier: 1, color: '#b98a6a', tint: '#7d5a41', spark: '#ffd9b0' },
+  { id: 2, key: 'bronzium', name: 'Bronzit', value: 60, weight: 10, from: 0, rarity: 0.62, tier: 1, color: '#d08a3c', tint: '#8a5518', spark: '#ffc46b' },
+  { id: 3, key: 'silverium', name: 'Srebrovit', value: 100, weight: 10, from: 0, rarity: 0.36, tier: 1, color: '#cfd6e4', tint: '#7f8899', spark: '#ffffff' },
+  { id: 4, key: 'goldium', name: 'Zlatorud', value: 250, weight: 20, from: 1000, rarity: 0.2, tier: 1, color: '#ffd23f', tint: '#a67c00', spark: '#fff3a8' },
+  { id: 5, key: 'platinium', name: 'Platinovec', value: 750, weight: 30, from: 3000, rarity: 0.13, tier: 2, color: '#dff4ff', tint: '#7ea3b5', spark: '#ffffff' },
+  { id: 6, key: 'einsteinium', name: 'Einsteinij', value: 2000, weight: 40, from: 5000, rarity: 0.08, tier: 2, color: '#7dffb0', tint: '#2f9b62', spark: '#d6ffe8' },
+  { id: 7, key: 'emerald', name: 'Smaragd', value: 5000, weight: 60, from: 6500, rarity: 0.05, tier: 3, color: '#2fd97a', tint: '#12663a', spark: '#b7ffd4' },
+  { id: 8, key: 'ruby', name: 'Rubin', value: 20000, weight: 80, from: 8000, rarity: 0.032, tier: 3, color: '#ff3b5c', tint: '#8c1029', spark: '#ffc2cd' },
+  { id: 9, key: 'diamond', name: 'Diamant', value: 100000, weight: 100, from: 9500, rarity: 0.02, tier: 4, color: '#9fefff', tint: '#4a8fa8', spark: '#ffffff' },
+  { id: 10, key: 'amazonite', name: 'Amazonit', value: 500000, weight: 120, from: 11000, rarity: 0.013, tier: 4, color: '#3fe0d0', tint: '#0f6f68', spark: '#c4fff8' },
 ];
 
 export const ORE_BY_ID = ORES.reduce((acc, ore) => (acc[ore.id] = ore, acc), {});
@@ -72,86 +72,87 @@ const tier = (name, price, value) => ({ name, price, value });
 
 export const UPGRADES = {
   drill: {
-    label: 'Drill',
-    blurb: 'Rock eaten per second.',
+    label: 'Sveder',
+    blurb: 'Kamna na sekundo.',
     unit: 'ft/s',
     tiers: [
-      tier('Basic Drill', 0, 40),
-      tier('Steel Drill', 750, 55),
-      tier('Diamond Drill', 2000, 72),
-      tier('Tungsten Drill', 5000, 92),
-      tier('Emerald Drill', 20000, 118),
-      tier('Ruby Drill', 100000, 150),
-      tier('Amazonite Drill', 500000, 200),
+      tier('Osnovni sveder', 0, 40),
+      tier('Jekleni sveder', 750, 55),
+      tier('Diamantni sveder', 2000, 72),
+      tier('Volframov sveder', 5000, 92),
+      tier('Smaragdni sveder', 20000, 118),
+      tier('Rubinov sveder', 100000, 150),
+      tier('Amazonitni sveder', 500000, 200),
     ],
   },
   hull: {
-    label: 'Hull',
-    blurb: 'Structural integrity.',
+    label: 'Trup',
+    blurb: 'Strukturna celovitost.',
     unit: 'HP',
     tiers: [
-      tier('Basic Hull', 0, 10),
-      tier('Reinforced Hull', 750, 17),
-      tier('Steel Hull', 2000, 30),
-      tier('Titanium Hull', 5000, 50),
-      tier('Platinum Hull', 20000, 80),
-      tier('Diamond Hull', 100000, 120),
-      tier('Amazonite Hull', 500000, 180),
+      tier('Osnovni trup', 0, 10),
+      tier('Ojačani trup', 750, 17),
+      tier('Jekleni trup', 2000, 30),
+      tier('Titanov trup', 5000, 50),
+      tier('Platinasti trup', 20000, 80),
+      tier('Diamantni trup', 100000, 120),
+      tier('Amazonitni trup', 500000, 180),
     ],
   },
   engine: {
-    label: 'Engine',
-    blurb: 'Thrust and top speed.',
-    unit: 'hp',
+    label: 'Motor',
+    blurb: 'Potisk in najvišja hitrost.',
+    // KM, not hp: konjske moči is what a Slovenian garage quotes.
+    unit: 'KM',
     tiers: [
-      tier('Basic Engine', 0, 150),
-      tier('Sterling Engine', 750, 162),
-      tier('High-Performance Engine', 2000, 175),
-      tier('Gasoline Engine', 5000, 188),
-      tier('Jet Engine', 20000, 202),
-      tier('Plasma Engine', 100000, 218),
-      tier('Warp Engine', 500000, 240),
+      tier('Osnovni motor', 0, 150),
+      tier('Standardni motor', 750, 162),
+      tier('Visokozmogljivi motor', 2000, 175),
+      tier('Bencinski motor', 5000, 188),
+      tier('Reaktivni motor', 20000, 202),
+      tier('Plazemski motor', 100000, 218),
+      tier('Warp motor', 500000, 240),
     ],
   },
   radiator: {
-    label: 'Radiator',
-    blurb: 'Heat and blast shielding.',
+    label: 'Hladilnik',
+    blurb: 'Zaščita pred vročino in eksplozijami.',
     unit: '%',
     tiers: [
-      tier('Radiator', 0, 0),
-      tier('Copper Radiator', 2000, 10),
-      tier('Steel Radiator', 5000, 25),
-      tier('Titanium Radiator', 20000, 40),
-      tier('Platinum Radiator', 100000, 60),
-      tier('Amazonite Radiator', 500000, 80),
+      tier('Hladilnik', 0, 0),
+      tier('Bakreni hladilnik', 2000, 10),
+      tier('Jekleni hladilnik', 5000, 25),
+      tier('Titanov hladilnik', 20000, 40),
+      tier('Platinasti hladilnik', 100000, 60),
+      tier('Amazonitni hladilnik', 500000, 80),
     ],
   },
   tank: {
-    label: 'Fuel Tank',
-    blurb: 'Litres of fuel.',
+    label: 'Rezervoar',
+    blurb: 'Litri goriva.',
     unit: 'L',
     tiers: [
-      tier('Basic Tank', 0, 22),
-      tier('Plastic Tank', 750, 34),
-      tier('Aluminium Tank', 2000, 52),
-      tier('Stainless Steel Tank', 5000, 78),
-      tier('Titanium Tank', 20000, 118),
-      tier('Platinum Tank', 100000, 180),
-      tier('Amazonite Tank', 500000, 330),
+      tier('Osnovni rezervoar', 0, 22),
+      tier('Plastični rezervoar', 750, 34),
+      tier('Aluminijast rezervoar', 2000, 52),
+      tier('Rezervoar iz nerjavečega jekla', 5000, 78),
+      tier('Titanov rezervoar', 20000, 118),
+      tier('Platinasti rezervoar', 100000, 180),
+      tier('Amazonitni rezervoar', 500000, 330),
     ],
   },
   cargo: {
-    label: 'Cargo Bay',
-    blurb: 'Kilograms of ore.',
+    label: 'Tovorni prostor',
+    blurb: 'Kilogrami rude.',
     unit: 'kg',
     tiers: [
-      tier('Basic Cargo Bay', 0, 220),
-      tier('Plastic Cargo Bay', 750, 700),
-      tier('Aluminium Cargo Bay', 2000, 1500),
-      tier('Steel Cargo Bay', 5000, 3000),
-      tier('Titanium Cargo Bay', 20000, 6000),
-      tier('Platinum Cargo Bay', 100000, 12000),
-      tier('Amazonite Cargo Bay', 500000, 26000),
+      tier('Osnovni tovorni prostor', 0, 220),
+      tier('Plastični tovorni prostor', 750, 700),
+      tier('Aluminijast tovorni prostor', 2000, 1500),
+      tier('Jekleni tovorni prostor', 5000, 3000),
+      tier('Titanov tovorni prostor', 20000, 6000),
+      tier('Platinasti tovorni prostor', 100000, 12000),
+      tier('Amazonitni tovorni prostor', 500000, 26000),
     ],
   },
 };
@@ -161,12 +162,12 @@ export const MAX_TIER = 6;
 
 /** Consumables from the supply station. `max` is how many you can carry. */
 export const ITEMS = [
-  { key: 'fuel', name: 'Reserve Fuel', price: 2000, max: 1, blurb: '+33% tank, anywhere.', tone: 'fuel' },
-  { key: 'nanobots', name: 'Nanobots', price: 7500, max: 1, blurb: 'Repair 60% hull, anywhere.', tone: 'repair' },
-  { key: 'dynamite', name: 'Dynamite', price: 2000, max: 8, blurb: 'Blasts a 4x4 pocket.', tone: 'blast' },
-  { key: 'c4', name: 'Plastic Explosives', price: 5000, max: 8, blurb: 'Blasts a 6x6 pocket.', tone: 'blast' },
-  { key: 'teleporter', name: 'Quantum Teleporter', price: 2000, max: 4, blurb: 'Untested. Loses most of the hold.', tone: 'jump' },
-  { key: 'transmitter', name: 'Matter Transmitter', price: 10000, max: 4, blurb: 'Instant trip up, ore intact.', tone: 'jump' },
+  { key: 'fuel', name: 'Rezervno gorivo', price: 2000, max: 1, blurb: '+33 % rezervoarja, kjerkoli.', tone: 'fuel' },
+  { key: 'nanobots', name: 'Nanoboti', price: 7500, max: 1, blurb: 'Popravi 60 % trupa, kjerkoli.', tone: 'repair' },
+  { key: 'dynamite', name: 'Dinamit', price: 2000, max: 8, blurb: 'Razstreli žep 4x4.', tone: 'blast' },
+  { key: 'c4', name: 'Plastični eksploziv', price: 5000, max: 8, blurb: 'Razstreli žep 6x6.', tone: 'blast' },
+  { key: 'teleporter', name: 'Kvantni teleporter', price: 2000, max: 4, blurb: 'Nepreizkušen. Izgubi večino tovora.', tone: 'jump' },
+  { key: 'transmitter', name: 'Prenosnik snovi', price: 10000, max: 4, blurb: 'Takojšnja vrnitev, tovor cel.', tone: 'jump' },
 ];
 
 export const ITEM_BY_KEY = ITEMS.reduce((acc, item) => (acc[item.key] = item, acc), {});
@@ -233,9 +234,9 @@ export const LAVA = { dps: 22, proximity: 1 };
 
 /** Surface facilities, in tile columns, left to right. */
 export const FACILITIES = [
-  { key: 'fuel', col: 3, name: 'Fuel Depot', color: '#ffd23f' },
-  { key: 'sell', col: 10, name: 'Mineral Processor', color: '#4dd4ff' },
-  { key: 'shop', col: 20, name: 'Supply & Repair', color: '#a78bfa' },
+  { key: 'fuel', col: 3, name: 'RNOV Črpalka', note: 'Odprto 7.00-15.00, malica 9.00-9.30.', color: '#ffd23f' },
+  { key: 'sell', col: 10, name: 'RNOV Odkup rude', note: 'Odkup po ceniku. Pritožbe na obrazcu R-3.', color: '#4dd4ff' },
+  { key: 'shop', col: 20, name: 'RNOV Servis', note: 'Popravila po naročilu. Naročilo ni v sistemu.', color: '#a78bfa' },
 ];
 
 /** The last thing on the map. */
@@ -243,7 +244,7 @@ export const ENDGAME = {
   row: ROWS - 6,
   col: 11,
   reward: 50000000,
-  name: 'Mr. Natas',
+  name: 'Gospod Natas',
 };
 
 export const SAVE_KEY = 'deepcore.save.v1';

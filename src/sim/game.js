@@ -304,7 +304,7 @@ export function useItem(s, key) {
 /* Damage, blasts, hazards                                             */
 /* ------------------------------------------------------------------ */
 
-export function hurt(s, amount, cause = 'damage') {
+export function hurt(s, amount, cause = 'poškodba') {
   if (s.ship.hull <= 0) return;
   s.ship.hull -= amount;
   s.shake = Math.min(1, s.shake + amount / 40);
@@ -316,7 +316,7 @@ export function hurt(s, amount, cause = 'damage') {
  * original's bargain: dying is a setback measured in one trip, never in the
  * run. Insurance is deliberately not a purchase.
  */
-function destroy(s, cause = 'destroyed') {
+function destroy(s, cause = 'uničeno') {
   s.ship.hull = 0;
   s.cargo = [];
   s.cargoWeight = 0;
@@ -365,7 +365,7 @@ function detonateGas(s, col, row) {
     * (1 - radiatorPct(s));
   explode(s, col, row, GAS.radius);
   s.ship.fuel = Math.max(0, s.ship.fuel - maxFuel(s) * 0.04);
-  hurt(s, dmg, 'gas pocket');
+  hurt(s, dmg, 'žep plina');
   s.events.push({ type: 'gas', col, row });
   // A cloud that lingers: the ship should not be able to sit in the crater.
   s.gasClouds.push({ x: (col + 0.5) * TILE, y: (row + 0.5) * TILE, r: 2.4 * TILE, life: 0, max: 2.6 });
@@ -625,7 +625,7 @@ export function step(s, dt, input) {
   const thrusting = Boolean(horizontal || input.up || input.down);
   const burn = (thrusting ? PHYS.fuelThrust : PHYS.fuelIdle) * (0.6 + filled * 0.9);
   ship.fuel = Math.max(0, ship.fuel - burn * dt);
-  if (ship.fuel <= 0 && !s.ended) destroy(s, 'out of fuel');
+  if (ship.fuel <= 0 && !s.ended) destroy(s, 'zmanjkalo goriva');
 
   // --- damage sources -------------------------------------------------
   touchLava(s, dt);
@@ -665,7 +665,7 @@ function moveShip(s, dt) {
       if (ship.vy > PHYS.fallSafe * 0.9) {
         const excess = ship.vy - PHYS.fallSafe;
         if (excess > 0) {
-          hurt(s, excess * PHYS.fallScale, 'a hard landing');
+  hurt(s, excess * PHYS.fallScale, 'trd pristanek');
           ship.impact = clamp(excess / 400, 0, 1);
         }
       }
