@@ -16,7 +16,7 @@ import {
   upgradeTier, maxFuel, maxHull, buyUpgrade, buyItem, refuel, repair,
   sellCargo, cargoValue, cargoManifest, drillPower,
 } from './sim/game.js';
-import { money, grouped, RNOV } from './teksti.js';
+import { money, grouped } from './teksti.js';
 
 /** A tiny DOM builder, so the markup below stays readable. */
 function h(tag, props = {}, ...children) {
@@ -89,12 +89,6 @@ function modal(root, { title, subtitle, wide = false, onClose }) {
 
 export function showTitle(root, { onStart, onContinue, hasSave, onHelp }) {
   const card = h('div', { class: 'modal-card title-card' },
-    // The agency block. The joke is that a state body built a mining simulator
-    // and stamped it like a form.
-    h('div', { class: 'agency' },
-      h('span', { class: 'agency-mark', text: RNOV.short }),
-      h('span', { class: 'agency-full', text: RNOV.full }),
-    ),
     h('h1', { class: 'title-name' },
       h('span', { class: 'title-deep', text: 'DEEP' }),
       h('span', { class: 'title-core', text: 'CORE' }),
@@ -111,7 +105,7 @@ export function showTitle(root, { onStart, onContinue, hasSave, onHelp }) {
       }, hasSave ? 'NOV RUDNIK' : 'ZAČNI VRTATI'),
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: onHelp }, 'NAVODILA'),
     ),
-    h('p', { class: 'title-foot', text: `${RNOV.tagline} ${RNOV.version}. RNOV ne odgovarja za izgubljene tovore.` }),
+    h('p', { class: 'title-foot', text: 'Različica 1.0. Rudnik ne odpušča napak.' }),
   );
   const backdrop = h('div', { class: 'modal modal-title' }, card);
   root.append(backdrop);
@@ -197,7 +191,7 @@ export function showPause(root, { onResume, onSave, onQuit, muted, onToggleSound
  */
 export function showShop(root, state, { onSpend, onClose, initialTab = 'ship' }) {
   const m = modal(root, {
-    title: 'RNOV Servis in trgovina',
+    title: 'Servis in trgovina',
     subtitle: 'Kupi naslednjo stopnjo. Vse je trajno.',
     wide: true,
     onClose,

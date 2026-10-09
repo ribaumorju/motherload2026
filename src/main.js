@@ -36,7 +36,7 @@ import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { showTitle, showHelp, showPause, showShop, showEnd } from './menus.js';
 import {
-  money, grouped, MEMOS, MILESTONES, reachedCount, findQuip,
+  money, grouped, findQuip,
 } from './teksti.js';
 
 const FIXED_DT = 1 / 120;
@@ -69,9 +69,6 @@ let endShown = false;
 let bestDepth = readBest();
 let warnedFuel = false;
 let warnedHull = false;
-/** How many RNOV memos and dug-tile milestones have already been announced. */
-let memosFired = 0;
-let milestonesFired = 0;
 
 /** View size in world pixels, and the scale applied to draw them. */
 const view = { w: 800, h: 500, scale: 1, dpr: 1 };
@@ -151,8 +148,6 @@ function begin() {
   endShown = false;
   warnedFuel = false;
   warnedHull = false;
-  memosFired = 0;
-  milestonesFired = 0;
   running = true;
   paused = false;
   accumulator = 0;
@@ -254,31 +249,6 @@ function checkWarnings() {
     hud.toast('Trup je kritičen.', 'danger', 3400);
   } else if (hullFrac > 0.5) {
     warnedHull = false;
-  }
-}
-
-/**
- * Head office writes to you, and it notices how much rock you have moved.
- *
- * Both lists are thresholds on a number that only ever grows, so "how many have
- * I passed" is enough to know which ones still owe a message - no set of fired
- * ids, nothing to serialise, and it cannot double-fire. The loop rather than an
- * `if` because a fast descent can cross two thresholds in one frame and the
- * second memo would otherwise be silently swallowed.
- *
- * Presentation only, so it lives here rather than in the sim: a memo changes
- * nothing about the game, and the sim has no business knowing about toasts.
- */
-function checkMemos() {
-  while (memosFired < reachedCount(MEMOS, state.maxDepth)) {
-    audio.click();
-    hud.toast(MEMOS[memosFired].text, 'info', 5600);
-    memosFired += 1;
-  }
-  while (milestonesFired < reachedCount(MILESTONES, state.stats.dug)) {
-    audio.click();
-    hud.toast(MILESTONES[milestonesFired].text, 'gold', 5200);
-    milestonesFired += 1;
   }
 }
 
@@ -413,7 +383,6 @@ function tick(now) {
 
     handleEvents();
     checkWarnings();
-    checkMemos();
 
     const row = rowOf(state.ship.y);
     const hardness = tileHardness(row);

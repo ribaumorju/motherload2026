@@ -234,9 +234,9 @@ export const LAVA = { dps: 22, proximity: 1 };
 
 /** Surface facilities, in tile columns, left to right. */
 export const FACILITIES = [
-  { key: 'fuel', col: 3, name: 'RNOV Črpalka', note: 'Odprto 7.00-15.00, malica 9.00-9.30.', color: '#ffd23f' },
-  { key: 'sell', col: 10, name: 'RNOV Odkup rude', note: 'Odkup po ceniku. Pritožbe na obrazcu R-3.', color: '#4dd4ff' },
-  { key: 'shop', col: 20, name: 'RNOV Servis', note: 'Popravila po naročilu. Naročilo ni v sistemu.', color: '#a78bfa' },
+  { key: 'fuel', col: 3, name: 'Črpalka', note: 'Gorivo in popravila trupa.', color: '#ffd23f' },
+  { key: 'sell', col: 10, name: 'Odkup rude', note: 'Ruda se stehta in plača takoj.', color: '#4dd4ff' },
+  { key: 'shop', col: 20, name: 'Trgovina', note: 'Nadgradnje, popravila in razstrelivo.', color: '#a78bfa' },
 ];
 
 /** The last thing on the map. */

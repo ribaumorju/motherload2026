@@ -1,15 +1,14 @@
 /**
  * Painting the mine.
  *
- * Order matters and is fixed: sky, surface, tunnels, tiles, props, light, then
- * particles. The light pass is the last of the world layers because it is a
- * darkness with holes punched in it - everything the player is meant to see has
- * to already be on the canvas before the darkness goes on top.
+ * Order matters and is fixed: sky, then the surface standing on it, then the
+ * tiles, then everything that moves. Above ground it is sky, hills, clouds,
+ * grass, trees, buildings; below it is rock, ore and hazards. There is no light
+ * pass any more - the mine is lit edge to edge, and what tells you how deep you
+ * are is the rock's own colour.
  *
- * The darkness is built in a separate canvas at a quarter resolution and
- * stretched back up. It is a smooth gradient with soft edges, so the low
- * resolution is invisible, and it turns a full-screen per-pixel pass into a few
- * hundred cheap operations.
+ * The buildings themselves live in `buildings.js`; this file is the ground they
+ * stand on and the rock underneath it.
  */
 
 import {
@@ -19,18 +18,19 @@ import { KIND, kindOf, variantOf, rowDepth } from '../sim/world.js';
 import { hash2 } from '../sim/rng.js';
 import { SS } from './atlas.js';
 import { bandIndexAt, SKY } from './palette.js';
+import { drawFacilities } from './buildings.js';
 
 /* ------------------------------------------------------------------ */
 /* Background                                                          */
 /* ------------------------------------------------------------------ */
 
 /**
- * The sky: flat bands, hard stars, a hard sun.
+ * The sky: flat bands, a low sun, drifting clouds, two ridges of hills.
  *
- * It used to be a four-stop gradient with a radial bloom around the sun and
- * stars whose alpha twinkled. Flat bands are what this era of game actually
- * drew, and it costs six `fillRect`s instead of building two gradients every
- * frame.
+ * Daytime blue, not the near-black it was. The original was a bright day over a
+ * green field and the mine was the dark place underneath, and having the surface
+ * be the darkest spot on the screen had that backwards. The stars went with the
+ * night: stars in a blue sky read as a bug, not as a mood.
  *
  * Drawn only when the view includes sky, which for most of the game it does not.
  */
@@ -46,137 +46,177 @@ export function drawSky(ctx, cam, origin, viewW, viewH) {
     ctx.fillRect(0, Math.floor(i * bandH), viewW, Math.ceil(bandH) + 1);
   }
 
-  // Stars, whole pixels on a fixed grid so they do not crawl as the camera moves.
-  ctx.fillStyle = '#ffffff';
-  for (let gx = 0; gx < COLS * TILE; gx += 37) {
-    for (let gy = -600; gy < skyBottom; gy += 43) {
-      const h = hash2(gx, gy);
-      if (h < 0.8) continue;
-      const sx = gx + h * 20 - origin.x;
-      const sy = gy - origin.y;
-      if (sx < 0 || sx > viewW || sy < 0 || sy > y) continue;
-      const s = h > 0.94 ? 2 : 1;
-      ctx.fillRect(sx, sy, s, s);
-    }
-  }
-
   // The sun, low and warm: a hard disc with an outline, no bloom.
   const sunX = 15.5 * TILE - origin.x;
-  const sunY = skyBottom - 30 - origin.y;
+  const sunY = skyBottom - 38 - origin.y;
   ctx.fillStyle = SKY.sun;
   ctx.beginPath();
-  ctx.arc(sunX, sunY, 17, 0, Math.PI * 2);
+  ctx.arc(sunX, sunY, 16, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#7a4a1c';
+  ctx.strokeStyle = '#c8a24a';
   ctx.lineWidth = 2;
   ctx.stroke();
 
+  drawClouds(ctx, cam, origin, viewW, y);
   drawHills(ctx, origin, skyBottom, viewW);
+}
+
+/**
+ * Clouds, drifting on a slow parallax.
+ *
+ * These are most of what turns the surface from a backdrop into a place: a blue
+ * block with three buildings on it reads as a diagram, and the same block with
+ * cloud shadows moving across it does not.
+ *
+ * Each cloud is placed from the hash of its index, so the sky is the same sky
+ * every run, and it wraps over a span slightly wider than the mine so the drift
+ * never shows an edge.
+ */
+function drawClouds(ctx, cam, origin, viewW, skyH) {
+  const drift = cam.t * 7 - origin.x * 0.12;
+  const span = COLS * TILE + 600;
+  for (let i = 0; i < 10; i += 1) {
+    const h = hash2(i * 13 + 1, 7);
+    const h2 = hash2(i * 7 + 3, 11);
+    const w = 44 + Math.round(h * 52);
+    const x = Math.round((((h * span + drift) % span) + span) % span - 300);
+    const y = 16 + Math.round(h2 * Math.max(24, skyH * 0.5));
+    if (x > viewW + 120 || x + w < -120) continue;
+    cloud(ctx, x, y, w, h);
+  }
+}
+
+/** One cloud: stacked hard blocks, a lit top and a cool grey underside. */
+function cloud(ctx, x, y, w, seed) {
+  const rows = 3 + (seed > 0.55 ? 1 : 0);
+  for (let r = 0; r < rows; r += 1) {
+    const inset = (rows - 1 - r) * 9;
+    const ww = w - inset * 2;
+    if (ww <= 0) break;
+    ctx.fillStyle = r === 0 ? '#ffffff' : '#f2f7fd';
+    ctx.fillRect(x + inset, y + r * 7, ww, 7);
+  }
+  // The underside, in a cool grey, so a white cloud has some weight on it.
+  ctx.fillStyle = '#b8cbe0';
+  ctx.fillRect(x + 9, y + rows * 7, w - 18, 3);
+  // Puffs on the crown, offset by the seed so no two clouds are the same shape.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x + 10 + Math.round(seed * 12), y - 7, 20, 8);
+  ctx.fillRect(x + 34 + Math.round(seed * 8), y - 4, 14, 5);
 }
 
 function drawHills(ctx, origin, skyBottom, viewW) {
   const layers = [
-    { parallax: 0.35, height: 130, color: '#1c2740', step: 210 },
-    { parallax: 0.6, height: 78, color: '#121a28', step: 150 },
+    { parallax: 0.35, height: 150, color: '#3a6b45', step: 210, cap: '#4d8459' },
+    { parallax: 0.6, height: 92, color: '#24482c', step: 150, cap: '#33603c' },
   ];
   for (const layer of layers) {
     const base = skyBottom - origin.y - layer.height;
-    ctx.fillStyle = layer.color;
-    ctx.beginPath();
-    ctx.moveTo(0, skyBottom - origin.y + 2);
     const shift = -origin.x * layer.parallax;
+    const top = [];
     for (let x = -layer.step; x <= viewW + layer.step; x += 12) {
       const world = x - shift;
       const h = Math.sin(world / layer.step) * 0.5 + Math.sin(world / (layer.step * 0.37)) * 0.5;
       // Snapped to 4px steps: a smooth curve up here would be the only soft edge
       // left on the screen.
-      ctx.lineTo(x, Math.round((base + h * layer.height * 0.5) / 4) * 4);
+      top.push([x, Math.round((base + h * layer.height * 0.5) / 4) * 4]);
     }
-    ctx.lineTo(viewW, skyBottom - origin.y + 2);
+
+    ctx.fillStyle = layer.color;
+    ctx.beginPath();
+    ctx.moveTo(top[0][0], skyBottom - origin.y + 2);
+    for (const [x, ty] of top) ctx.lineTo(x, ty);
+    ctx.lineTo(top[top.length - 1][0], skyBottom - origin.y + 2);
     ctx.closePath();
     ctx.fill();
+
+    // A lit crest along the ridge, so a hill has a top edge instead of being a
+    // silhouette pasted on the sky.
+    ctx.strokeStyle = layer.cap;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(top[0][0], top[0][1]);
+    for (const [x, ty] of top) ctx.lineTo(x, ty);
+    ctx.stroke();
   }
 }
 
-/** The grass line and the facilities standing on it. */
+/**
+ * The ground, and everything standing on it.
+ *
+ * The tree line is doing most of the work here. A flat green strip with three
+ * boxes on it is a diagram; the same strip with pines along it, grass breaking
+ * the ground line and a treeline dropping away behind the buildings is a valley.
+ * The trees go down first, so the buildings stand in front of them.
+ */
 export function drawSurface(ctx, origin, time) {
   const y = SURFACE_ROW * TILE - origin.y;
   if (y < -TILE * 2 || y > 4000) return;
 
-  // Flat grass with a hard shadow line under it, rather than a gradient.
-  ctx.fillStyle = SKY.grassLit;
-  ctx.fillRect(0, y, COLS * TILE, TILE * 0.5);
-  ctx.fillStyle = SKY.grass;
-  ctx.fillRect(0, y + TILE * 0.5 - 2, COLS * TILE, 2);
-  ctx.fillStyle = SKY.soil;
-  ctx.fillRect(0, y + TILE * 0.5, COLS * TILE, TILE * 1.5);
+  const w = COLS * TILE;
 
-  // A few tufts, deterministic per column.
-  ctx.strokeStyle = SKY.grassLit;
-  ctx.lineWidth = 1;
+  // Flat grass with a lit top lip and a hard shadow under it, not a gradient.
+  ctx.fillStyle = SKY.grassLit;
+  ctx.fillRect(0, y, w, TILE * 0.5);
+  ctx.fillStyle = SKY.grass;
+  ctx.fillRect(0, y + TILE * 0.5 - 3, w, 3);
+  ctx.fillStyle = SKY.soil;
+  ctx.fillRect(0, y + TILE * 0.5, w, TILE * 1.5);
+
+  // Grass breaking the ground line. Whole-pixel blades leaning off vertical, so
+  // the horizon is not a ruler line across the screen.
   for (let col = 0; col < COLS; col += 1) {
     const h = hash2(col, 7);
-    if (h < 0.45) continue;
-    const bx = (col + h) * TILE - origin.x;
-    for (let b = 0; b < 3; b += 1) {
+    if (h < 0.3) continue;
+    const bx = Math.round((col + h) * TILE - origin.x);
+    for (let b = 0; b < 4; b += 1) {
       const hx = hash2(col * 3 + b, 11);
-      ctx.beginPath();
-      ctx.moveTo(bx + b * 3, y + TILE * 0.5);
-      ctx.lineTo(bx + b * 3 + (hx - 0.5) * 6, y + TILE * 0.5 - 5 - hx * 5);
-      ctx.stroke();
+      const th = 3 + Math.round(hx * 5);
+      ctx.fillStyle = hx > 0.5 ? SKY.grassLit : SKY.grass;
+      ctx.fillRect(bx + b * 3, Math.round(y - th), 1, th);
+      if (hx > 0.7) ctx.fillRect(bx + b * 3 + 1, Math.round(y - th + 1), 1, th - 1);
     }
   }
 
-  for (const facility of FACILITIES) drawFacility(ctx, facility, origin, y, time);
+  // The treeline, behind the buildings.
+  for (let i = 0; i < 30; i += 1) {
+    const h = hash2(i * 17 + 3, 5);
+    const h2 = hash2(i * 29 + 7, 13);
+    const tx = Math.round(h * w) - origin.x;
+    if (tx < -40 || tx > w + 40) continue;
+    // Keep the buildings' sightlines clear, so a pine never grows through a
+    // depot's sign.
+    let crowded = false;
+    for (const f of FACILITIES) {
+      if (Math.abs(f.col * TILE - origin.x - tx) < 84) crowded = true;
+    }
+    if (crowded) continue;
+    drawPine(ctx, tx, y, h2 > 0.62 ? 1 : 0);
+  }
+
+  drawFacilities(ctx, FACILITIES, origin, y, time);
 }
 
 /**
- * A facility: a flat box with a hard bevel, a sign band, lit windows, and a
- * beacon that blinks rather than glows.
- *
- * The beacon is the only affordance telling the player "you can dock here", so
- * it is worth the lines - but it blinks on and off now instead of pulsing
- * through a soft halo, because a halo is the one thing this style does not have.
+ * A pine: a trunk and three or four stepped tiers of needles, widest at the
+ * bottom. Stepped rather than a triangle because a diagonal edge is the one
+ * thing this style of drawing does not have.
  */
-function drawFacility(ctx, facility, origin, groundY, time) {
-  const x = facility.col * TILE - origin.x;
-  const w = Math.round(TILE * 2.6);
-  const h = Math.round(TILE * 2.1);
-  const top = Math.round(groundY - h);
-  const left = Math.round(x - w / 2);
+function drawPine(ctx, x, baseY, size) {
+  const tiers = 3 + size;
+  const tierH = 9 + size * 2;
+  ctx.fillStyle = '#3a2a1c';
+  ctx.fillRect(x - 1, baseY - 8, 3, 8);
 
-  // Light from the top-left, dark to the bottom-right, black outline: how a
-  // building was drawn before anyone reached for a gradient.
-  ctx.fillStyle = '#2b3242';
-  ctx.fillRect(left, top, w, h);
-  ctx.fillStyle = '#3d4759';
-  ctx.fillRect(left, top, w, 3);
-  ctx.fillRect(left, top, 3, h);
-  ctx.fillStyle = '#151a24';
-  ctx.fillRect(left, top + h - 3, w, 3);
-  ctx.fillRect(left + w - 3, top, 3, h);
-  ctx.strokeStyle = '#0b0d14';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(left + 0.5, top + 0.5, w - 1, h - 1);
-
-  // The sign band.
-  ctx.fillStyle = facility.color;
-  ctx.fillRect(left + 4, top + 5, w - 8, 7);
-
-  // Lit windows.
-  ctx.fillStyle = '#ffecb4';
-  for (let i = 0; i < 3; i += 1) {
-    const wx = left + 6 + i * 12;
-    ctx.fillRect(wx, top + 18, 8, 8);
-    ctx.strokeStyle = '#0b0d14';
-    ctx.strokeRect(wx + 0.5, top + 18.5, 7, 7);
-  }
-
-  if (Math.sin(time * 3 + facility.col) > 0) {
-    ctx.fillStyle = facility.color;
-    ctx.fillRect(Math.round(x) - 3, top - 9, 6, 6);
-    ctx.strokeStyle = '#0b0d14';
-    ctx.strokeRect(Math.round(x) - 2.5, top - 8.5, 5, 5);
+  for (let i = 0; i < tiers; i += 1) {
+    const half = Math.max(2, Math.round(9 - i * 2.1));
+    const ty = Math.round(baseY - 6 - (i + 1) * tierH);
+    ctx.fillStyle = i % 2 === 0 ? '#2b5b3d' : '#23482f';
+    ctx.fillRect(x - half, ty, half * 2, tierH);
+    // Light catching the left of each tier, and the top lip of the whole tree.
+    ctx.fillStyle = '#3d7a51';
+    ctx.fillRect(x - half, ty, 2, tierH);
+    ctx.fillRect(x - half, ty, half * 2, 2);
   }
 }
 

@@ -124,6 +124,25 @@ for (const [page, budget] of [['smoke.html', 30000], ['boot.html', 30000]]) {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
   const passed = lines.filter((l) => l.startsWith('PASS')).length;
   const failed = lines.filter((l) => l.startsWith('FAIL'));
+
+  /*
+   * A page that reports nothing must not be a pass.
+   *
+   * This is not hypothetical: a duplicate `const` in smoke.html was a parse
+   * error, so the whole script never ran, the `<pre>` kept its placeholder text,
+   * and this runner cheerfully printed "all browser checks passed" over 0
+   * checks. A syntax error in the harness looked exactly like a clean run.
+   *
+   * The harnesses are the thing that is supposed to catch this, so a silent
+   * page is treated as a failure and named as one.
+   */
+  if (passed === 0 && failed.length === 0) {
+    failed.push(
+      `the page ran no checks at all - it did not finish starting `
+      + `(first output: ${JSON.stringify((lines[0] || '').slice(0, 60))})`,
+    );
+  }
+
   totalPassed += passed;
   allFailed.push(...failed.map((l) => `${page}: ${l.replace(/^FAIL\s+/, '')}`));
   report.push({ page, passed, failed: failed.length, lines });

@@ -1,7 +1,8 @@
 # Deepcore
 
-**RNOV Deepcore** - a browser remake of **Motherload**, skinned as an internal
-training simulator for RNOV, *Razvoj in nadzor oskrbovalne verige*.
+**Deepcore** - a browser remake of **Motherload**: drill into a procedurally
+generated mine, haul the ore home, upgrade the pod, and find out what is at the
+bottom.
 
 Drill into a procedurally generated mine, haul the ore home, upgrade the pod, and
 find out what is at the bottom. The game is **in Slovenian and priced in euros**.
@@ -27,29 +28,18 @@ server is needed at all is that ES modules do not load over `file://`.
 
 ---
 
-## The RNOV framing
+## The easter eggs
 
-RNOV is both the skin and the running joke. The premise is that a state agency
-for supply chain development and oversight built a mining simulator to train its
-contractors, and stamped its name on every screen it could reach. The three
-surface buildings are its depots, the credits are a budget, and the depth gauge is
-a report.
+The game is its own thing again - a mine, not a government department. The jokes
+that survive are the ones the *mine* would tell:
 
-A state agency is funnier than a mine, so that is where the easter eggs live:
-
-- **Memos from head office** arrive as you pass each depth milestone and get
-  steadily more absurd as the mine gets more dangerous. The notice about the lava
-  takes thirty working days.
-- **Dug-tile milestones** are head office noticing your effort, and never quite
-  thanking you for it. Nobody moved this much rock even building the highway.
 - **The deep ores have something to say** when you find one - keyed by ore, so a
   second ruby gets the line you remember rather than a reroll.
-- **The facilities keep office hours**, printed in the dock prompt. The processor
-  takes complaints on form R-3.
+- **The facilities keep office hours**, printed in the dock prompt.
 - **The bottom of the mine** is where the joke pays off.
 
-None of it changes the game. The memos are presentation and live in `main.js`;
-the text and the thresholds they hang off live in `src/teksti.js`.
+None of it changes the game. The text lives in `src/teksti.js`, so there is one
+file to open to add a gag and no risk of one landing in the sim.
 
 ### Language and money
 
@@ -116,11 +106,39 @@ fonts, solid panels with two-pixel borders and bevelled edges, and hard offset
 shadows. Nothing on the screen is blurred, rounded or faded: no gradients, no
 bloom, no glow, no translucency, and no fog hiding the mine.
 
-The tiles are the clearest example. Rock is three tones laid down in whole blocks
-picked by position hash; ore is solid facets with black outlines; lava is flat
-orange with hard crust blocks. The soft radial mottles and half-transparent grain
-that came before cost more to draw and read as a photograph of rock rather than as
-rock.
+**The rock has a shape, not just a colour.** Every tile is a chipped block inside
+its cell - full width, with the corners cut by a depth that comes from the tile's
+variant - and then speckled, veined and pebbled on a 16x16 pixel grid. All of it
+comes from one position hash, so a wall reads as stacked boulders and still looks
+identical every time you fly past it. Tiles of the same depth differ from their
+neighbours by about half their pixels, which is what stops a large wall from
+tiling visibly.
+
+An earlier version drew rock as three tones in 6px blocks, so a 32px tile was
+five blocks across and a wall of rock was a five-by-five mosaic that read as flat
+mush. No amount of extra colour fixed that; the blocks were simply too big to
+carry a texture.
+
+**The surface is a place you came from.** Blue daytime sky with drifting clouds,
+a lit ridge on the hills, a treeline behind the buildings and grass breaking the
+horizon. The sky used to run from near-black to rust, which made the surface the
+darkest thing in the game and the deep rock comparatively bright - backwards, for
+a game whose whole subject is going down.
+
+**The three buildings have three silhouettes.** They used to be one grey box drawn
+three times with a different coloured strip, which is why the surface looked
+empty: there was nothing to look at, and nothing to tell them apart until you
+were close enough to read the strip. Now the depot is a squat hut beside a tall
+tank with a pump and a hose; the processor is a tower with a chimney, a conveyor
+feeding it and an auger that turns; the store is wide and low under a striped
+awning with crates outside. You can name each one from across the mine, and the
+colour only confirms what the outline already told you. There is no text on any
+of them - a sign in a webfont is a sign that might not have loaded.
+
+The crack overlay, the gas seams and the lava crust are all stepped out pixel by
+pixel rather than stroked with canvas lines, because a stroked line is
+anti-aliased and puts grey half-pixels into a scene that is otherwise exact
+colours. The browser checks assert on that.
 
 ---
 
@@ -146,7 +164,8 @@ src/
     camera.js         follow, lead and shake
     palette.js        the colour of depth
     atlas.js          every tile sprite, drawn once at startup
-    world.js          sky, tiles, facilities, Mr. Natas, lighting
+    buildings.js      the three surface buildings
+    world.js          sky, ground, tiles, Mr. Natas
     ship.js           the pod
     fx.js             particles, floating text, vignette, CRT
 tests/selftest.mjs    the sim's own test suite, in Node
@@ -190,20 +209,22 @@ npm run balance    # play 30 simulated minutes with a bot and report
 `npm test` runs three layers:
 
 1. **Syntax** - every module parses.
-2. **Sim** (79 checks) - generation is deterministic per seed, the sky is never
+2. **Sim** (77 checks) - generation is deterministic per seed, the sky is never
    breached, the pod never ends up inside rock, ore respects its depth gate,
    gas detonates, lava burns and refuses the drill, explosives clear it anyway,
    pushing into rock drills it without a drill button, a held direction in open
    air does not cut a tile far below the pod, a pod resting on a ledge can still
-   get down, money formats as grouped euros, the memo and milestone thresholds are
-   ordered and reachable, no player-facing string is blank or still in dollars,
-   the economy never overdraws, every event the sim emits is handled, the save
-   round-trips, and five simulated minutes of play stay consistent.
-3. **Browser** (49 checks) - the real page in headless Chrome: every module
+   get down, money formats as grouped euros, no player-facing string is blank or
+   still in dollars, no shipped file still carries the old branding, the economy
+   never overdraws, every event the sim emits is handled, the save round-trips,
+   and five simulated minutes of play stay consistent.
+3. **Browser** (53 checks) - the real page in headless Chrome: every module
    imports, the atlas builds, real frames draw into a real canvas, the HUD
-   mounts, every menu opens, every sound cue plays, and a save survives a real
-   `localStorage` round trip. A second pass boots the real `src/main.js` and
-   drives its loop, because a test of the parts says nothing about the wiring.
+   mounts, every menu opens, every sound cue plays, the rock sprites carry texture
+   and no anti-aliasing, the three buildings have three different outlines, the
+   title screen carries no branding, and a save survives a real `localStorage`
+   round trip. A second pass boots the real `src/main.js` and drives its loop,
+   because a test of the parts says nothing about the wiring.
 
 The browser layer also samples **actual pixels**, because the things that break
 silently in a renderer are visual and no assertion about state catches them: the
@@ -266,6 +287,18 @@ steering the ship, which is also what it is.
 once at startup at 2x and blitted. Per-pixel noise per tile per frame is a way to
 spend an entire frame on the background.
 
+**A tile is a boulder, not a square.** The sprite is clipped by cutting its corners
+by a per-variant amount and then bevelling only the flat top and left - an earlier
+version bewelled the full cell, which drew a lit border around the cut corners and
+put back exactly the square grid the chips were there to break up. The chips are
+what makes a wall of rock read as stacked boulders.
+
+**Nothing in the tile art is anti-aliased.** Cracks are stepped out one pixel at a
+time rather than stroked, because a canvas stroke lands grey half-pixels in a
+scene that is otherwise exact colours - visible the moment it sits next to rock.
+The browser suite counts semi-transparent pixels in the crack overlays and expects
+zero.
+
 **There is no fog of war.** The mine used to be a circle of light around the pod
 with darkness everywhere else, built as a separate quarter-resolution canvas with
 holes punched in it with `destination-out`. It looked good and it was the wrong
@@ -312,6 +345,16 @@ the rock is, rather than a sample that has to be crossfaded.
 depths, because a hard colour change reads as a rendering bug. The rock goes
 warm brown, grey, cold slate, near-black purple, and finally black lit from
 within by red.
+
+**The buildings live in their own module.** They share one pixel-grid primitive
+and one palette, but each is a single function drawing a single silhouette - so
+redrawing the depot cannot break the store, and the whole surface is three calls.
+`world.js` keeps the ground they stand on.
+
+**Only the buildings' colour comes from config.** `FACILITIES` carries the accent
+colour, the name and the docking note; the shape lives in `buildings.js`, keyed by
+the same `key` the sim uses for docking. A new building needs a `key`, an entry in
+the facility table, and a function here.
 
 ### Deliberate simplifications
 

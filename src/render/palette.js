@@ -78,14 +78,22 @@ export function rockCached(depthFt) {
   return hit;
 }
 
-/** The sky above the mine, and the haze that sits on the horizon. */
+/**
+ * The sky above the mine, and the grass on top of it.
+ *
+ * Daylight, because the mine is the dark part. This used to run from near-black
+ * at the zenith to rust at the horizon - a dusk sky, which made the surface the
+ * darkest place in the game and the deep rock comparatively bright. Inverting
+ * that is most of why the surface now reads as somewhere you came from rather
+ * than as a wall above the dirt.
+ */
 export const SKY = {
-  zenith: '#070d1b',
-  high: '#12233f',
-  low: '#3b5a72',
-  horizon: '#c98f5e',
-  sun: '#ffe6b0',
-  grass: '#2f4a2a',
-  grassLit: '#4d7038',
+  zenith: '#1d4a8f',
+  high: '#2f6dbb',
+  low: '#5e9ad4',
+  horizon: '#a9cdea',
+  sun: '#fff3c4',
+  grass: '#3f6b33',
+  grassLit: '#5f9146',
   soil: '#4a3324',
 };

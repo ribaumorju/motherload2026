@@ -67,7 +67,7 @@
         /* ---------- imports ---------- */
         const names = [
           'config', 'sim/rng', 'sim/world', 'sim/physics', 'sim/game', 'sim/save',
-          'render/camera', 'render/palette', 'render/atlas', 'render/world',
+          'render/camera', 'render/palette', 'render/atlas', 'render/buildings', 'render/world',
           'render/ship', 'render/fx', 'hud', 'menus', 'input', 'audio',
         ];
         const mods = {};
@@ -90,10 +90,11 @@
         const ME = mods['menus'];
         const IN = mods['input'];
         const SAVE = mods['sim/save'];
+        const CFG = mods['config'];
+        const FACILITIES = CFG.FACILITIES;
         // ROWS lives in config, not in the world module: reading `W.ROWS` here
         // silently produced NaN and made the deep-frame check blame the renderer
         // for a bad coordinate.
-        const CFG = mods.config;
 
         if (!G || !C || !AT || !RW || !RS || !FX || !HUD || !ME || !IN) {
           log('FAIL  HARNESS CRASH: a required module did not import');
@@ -113,6 +114,88 @@
           }
           if (atlas.crack.length !== 4) return 'wrong number of crack overlays';
           return true;
+        });
+
+        await check('the rock sprites carry texture, and neighbouring tiles differ', () => {
+          /**
+           * The rock used to be three tones in 6px blocks, which made a 32px tile
+           * five blocks across and a wall of rock a flat mosaic. Two properties
+           * together are what fixed it, and either one alone is not enough:
+           *
+           *   - a tile has to have real tonal spread, or it is a flat colour with
+           *     a couple of specks on it;
+           *   - neighbouring tiles have to differ, or a wall tiles visibly and the
+           *     eye reads the repeat instead of the rock.
+           *
+           * Spread is measured as the standard deviation of luma across the
+           * sprite, which is scale-free and so does not need re-tuning when the
+           * palette changes.
+           */
+          for (let band = 0; band < 8; band += 1) {
+            for (let v = 0; v < 4; v += 1) {
+              const sprite = atlas.rock[band * 4 + v];
+              if (!sprite) return `rock sprite ${band * 4 + v} is missing`;
+              const d = sprite.getContext('2d').getImageData(0, 0, sprite.width, sprite.height).data;
+              const lum = [];
+              for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] === 0) continue;
+                lum.push(0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]);
+              }
+              if (lum.length < sprite.width * sprite.height * 0.5) {
+                return `rock sprite ${band * 4 + v} is more than half cut away`;
+              }
+              const mean = lum.reduce((a, b) => a + b, 0) / lum.length;
+              const sd = Math.sqrt(lum.reduce((a, b) => a + (b - mean) ** 2, 0) / lum.length);
+              if (sd < 4) {
+                return `rock sprite ${band * 4 + v} is nearly flat `
+                  + `(luma spread ${sd.toFixed(2)}) - it has no texture`;
+              }
+            }
+          }
+
+          // Variants of the same band must not be the same tile.
+          for (const band of [0, 3, 7]) {
+            const a = atlas.rock[band * 4].getContext('2d').getImageData(0, 0, 64, 64).data;
+            const b = atlas.rock[band * 4 + 1].getContext('2d').getImageData(0, 0, 64, 64).data;
+            let diff = 0;
+            for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i]) diff += 1;
+            const frac = diff / (a.length / 4);
+            if (frac < 0.2) {
+              return `band ${band}'s variants are only ${(frac * 100).toFixed(0)}% different `
+                + `- a wall of them will tile visibly`;
+            }
+          }
+          return true;
+        });
+
+        await check('nothing in the tile art is anti-aliased', () => {
+          /**
+           * Every sprite is drawn from whole-pixel `fillRect`s, so every pixel is
+           * either fully opaque or fully transparent. A single canvas `stroke` or
+           * `arc` - which is how the cracks used to be drawn - leaves partially
+           * transparent pixels, and those land as grey haze against exact
+           * colours.
+           *
+           * This is the guard for that: a half-transparent pixel anywhere in the
+           * atlas means something started drawing with a vector primitive.
+           */
+          const all = [
+            ...atlas.rock, ...atlas.gas, ...atlas.lava, ...atlas.crack,
+            ...[...atlas.ore.values()].flat(),
+          ];
+          for (const sprite of all) {
+            if (!sprite) return 'the atlas has a hole in it';
+            const d = sprite.getContext('2d').getImageData(0, 0, sprite.width, sprite.height).data;
+            for (let i = 3; i < d.length; i += 4) {
+              if (d[i] !== 0 && d[i] !== 255) {
+                const px = ((i - 3) / 4) % sprite.width;
+                const py = Math.floor(((i - 3) / 4) / sprite.width);
+                return `a sprite has a half-transparent pixel (alpha ${d[i]}) at ${px},${py} `
+                  + `- something is drawing with an anti-aliased primitive`;
+              }
+            }
+          }
+          return ok(`${all.length} sprites, all pixels fully opaque or fully clear`);
         });
 
         /* ---------- rendering into a real context ---------- */
@@ -161,6 +244,81 @@
           if (!Number.isFinite(deep.depth)) return 'depth went non-finite';
           if (!Number.isFinite(o.x) || !Number.isFinite(o.y)) return `origin is ${o.x},${o.y}`;
           return true;
+        });
+
+        await check('the surface buildings are distinct silhouettes, not one box recoloured', () => {
+          /**
+           * The three buildings used to be the same rectangle drawn three times
+           * with a different coloured strip, which is why the surface looked
+           * empty: there was no shape to look at and nothing to tell them apart
+           * until you were close enough to read the strip.
+           *
+           * So the property worth asserting is about the *outline*, not the
+           * colour. This samples the silhouette of each building - the topmost
+           * drawn pixel in every column across its width - and requires that the
+           * three outlines differ from each other, and that each one has a shape
+           * rather than a single flat height.
+           *
+           * The sky is not drawn here, so clouds cannot leak into the profile,
+           * and the treeline is skipped near the buildings by design, so what is
+           * measured is only the building.
+           */
+          const groundY = CFG.SURFACE_ROW * CFG.TILE + 140;
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          // A background no part of the art uses, so "drawn" is unambiguous.
+          ctx.fillStyle = '#ff00ff';
+          ctx.fillRect(0, 0, 800, 500);
+          // Shifted down so the tallest building (the processor's chimney) fits
+          // on the canvas instead of being clipped at the top edge.
+          RW.drawSurface(ctx, { x: 0, y: -140 }, 0);
+          const data = ctx.getImageData(0, 0, 800, 500).data;
+
+          const profileOf = (cx) => {
+            const out = [];
+            for (let x = cx - 60; x <= cx + 60; x += 1) {
+              let top = groundY;
+              for (let y = 0; y < groundY; y += 1) {
+                const i = (y * 800 + x) * 4;
+                if (data[i] !== 255 || data[i + 1] !== 0 || data[i + 2] !== 255) { top = y; break; }
+              }
+              out.push(top);
+            }
+            return out;
+          };
+
+          const profiles = FACILITIES.map((f) => profileOf(f.col * CFG.TILE));
+
+          for (let i = 0; i < profiles.length; i += 1) {
+            const tallest = Math.min(...profiles[i]);
+            if (tallest >= groundY - 8) {
+              return `${FACILITIES[i].name} draws nothing above the ground`;
+            }
+          }
+
+          for (let a = 0; a < profiles.length; a += 1) {
+            for (let b = a + 1; b < profiles.length; b += 1) {
+              let differing = 0;
+              for (let k = 0; k < profiles[a].length; k += 1) {
+                if (Math.abs(profiles[a][k] - profiles[b][k]) >= 4) differing += 1;
+              }
+              const frac = differing / profiles[a].length;
+              if (frac < 0.15) {
+                return `${FACILITIES[a].name} and ${FACILITIES[b].name} have nearly the same `
+                  + `outline (only ${(frac * 100).toFixed(0)}% of columns differ)`;
+              }
+            }
+          }
+
+          for (let i = 0; i < profiles.length; i += 1) {
+            const heights = new Set(profiles[i]);
+            if (heights.size < 5) {
+              return `${FACILITIES[i].name} is a featureless box `
+                + `(${heights.size} distinct heights across its whole width)`;
+            }
+          }
+
+          const tall = profiles.map((p) => groundY - Math.min(...p));
+          return ok(`${tall.join('/')}px tall, three distinct outlines`);
         });
 
         /* ---------- particles ---------- */
@@ -250,28 +408,30 @@
           return true;
         });
 
-        await check('the RNOV branding reaches the DOM, and the text keeps its diacritics', () => {
+        await check('the title screen carries no agency branding, and the text keeps its diacritics', () => {
           /**
-           * The branding has to survive all the way to the screen, and the
-           * Slovenian letters have to be real characters rather than escaped or
-           * mangled bytes - a half-converted file is the failure this guards.
+           * The Slovenian letters have to be real characters rather than escaped
+           * or mangled bytes - a half-converted file is the failure this guards.
            *
            * The letters are checked as *code points* against the rendered text,
            * not as literals in this file: an assertion written in the same
            * alphabet it is testing cannot tell a good conversion from a bad one.
            *
-           * Note the agency name itself is plain ASCII - "Razvoj in nadzor
-           * oskrbovalne verige" has no carons in it - so the letters are looked
-           * for in the help screen, where the prose actually uses them.
+           * The branding assertion is the inverse of what it used to be. The
+           * title used to carry a boxed acronym and a state agency's full name;
+           * the game is back to its own name, so this now fails if any of that
+           * creeps back in - including the facility names, which carried it too.
            */
           const root = document.getElementById('app');
           const t = ME.showTitle(root, { onStart() {}, onContinue() {}, hasSave: false, onHelp() {} });
-          const mark = root.querySelector('.agency-mark');
-          const full = root.querySelector('.agency-full');
-          if (!mark || !full) return 'the RNOV block is not on the title screen';
-          if (mark.textContent !== 'RNOV') return `the agency mark reads "${mark.textContent}"`;
-          const want = 'Razvoj in nadzor oskrbovalne verige';
-          if (full.textContent !== want) return `the agency name reads "${full.textContent}"`;
+          const titleText = root.textContent || '';
+          if (/RNOV|Razvoj in nadzor/.test(titleText)) {
+            return `the title screen still carries agency branding: "${titleText.trim().slice(0, 60)}"`;
+          }
+          // The facilities are named on the title screen's neighbours, not here,
+          // so check the table itself - that is where the names come from.
+          const branded = FACILITIES.filter((f) => /RNOV/i.test(f.name + ' ' + f.note));
+          if (branded.length) return `facility "${branded[0].name}" still carries agency branding`;
           t.close();
 
           ME.showHelp(root);
@@ -297,7 +457,7 @@
             return `the shop shows cash as "${cash && cash.textContent}"`;
           }
           root.querySelector('.modal-close').click();
-          return ok(`RNOV title, carons intact, cash ${cash.textContent}`);
+          return ok(`unbranded title, carons intact, cash ${cash.textContent}`);
         });
 
         /* ---------- input ---------- */
@@ -413,25 +573,45 @@
           return sum / (data.length / 4);
         };
 
-        await check('there is no fog of war: the view is lit edge to edge', () => {
+        await check('there is no fog of war: brightness does not fall off with distance', () => {
+          /**
+           * The mine used to be a circle of light around the pod with darkness
+           * everywhere else, so what this has to prove is that *brightness no
+           * longer depends on where the pod is*.
+           *
+           * The earlier version of this check counted pixels above a fixed luma
+           * and failed at 75%. That was measuring the wrong thing: it went red
+           * the moment the deep rock got legitimately darker, because "dark" and
+           * "fogged" are not the same property. Deep rock at 9,600 ft is supposed
+           * to be nearly black - that is the depth progression working - and a
+           * threshold on absolute brightness cannot tell the two apart.
+           *
+           * Comparing a ring near the pod against the far corners can: with fog
+           * the near ring is far brighter than the corners, and with no fog the
+           * two match because the light is uniform across the view.
+           */
           const { data } = frameAt(300);
-          // The mine used to be a circle of light around the pod with blackness
-          // everywhere else, and by this depth the darkness was at 0.93. Count
-          // how much of the frame is readable rock: the whole point of removing
-          // the fog is that the player can see the wall they are about to cut.
-          let lit = 0;
-          let total = 0;
-          for (let y = 10; y < 490; y += 3) {
-            for (let x = 10; x < 790; x += 3) {
-              total += 1;
-              if (luma(data, x, y) > 12) lit += 1;
+          let nearSum = 0;
+          let nearN = 0;
+          let farSum = 0;
+          let farN = 0;
+          for (let y = 0; y < 500; y += 2) {
+            for (let x = 0; x < 800; x += 2) {
+              const d = Math.hypot(x - 400, y - 250);
+              // Skip the pod itself: it is bright by design and sits in the
+              // middle, which is exactly the thing being measured around.
+              if (d > 60 && d < 150) { nearSum += luma(data, x, y); nearN += 1; }
+              else if (d > 320) { farSum += luma(data, x, y); farN += 1; }
             }
           }
-          const frac = lit / total;
-          if (frac < 0.75) {
-            return `only ${(frac * 100).toFixed(0)}% of the view is lit at 9,600 ft - fog is still hiding the mine`;
+          if (!nearN || !farN) return 'the sampling rings missed the frame';
+          const near = nearSum / nearN;
+          const far = farSum / farN;
+          if (near > far * 1.35) {
+            return `rock near the pod reads ${near.toFixed(1)} luma against ${far.toFixed(1)} far away - that is a light falloff`;
           }
-          return ok(`${(frac * 100).toFixed(0)}% of the view is lit at 9,600 ft`);
+          if (near < 3) return `the whole view is black (${near.toFixed(1)}) - nothing is being drawn`;
+          return ok(`near ${near.toFixed(1)} vs far ${far.toFixed(1)} - flat lighting`);
         });
 
         await check('the rock gets darker with depth', () => {
@@ -637,7 +817,7 @@
           // fail if someone renamed the class in one file and not the other.
           for (const sel of [
             '.hud', '.meter-fill', '.modal-card', '.toast', '.radar', '.gauge',
-            '.agency-mark', '.agency-full', '.dock-note',
+            '.title-name', '.dock-note',
           ]) {
             if (!css.includes(sel)) return `game.css has no ${sel} rule`;
           }

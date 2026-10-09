@@ -12,12 +12,15 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   COLS, ROWS, SKY_ROWS, TILE, ORES, ORE_BY_ID, MAX_TIER, PHYS, START_CASH, LAVA,
   UPGRADES, UPGRADE_KEYS, ITEMS, FACILITIES, DEPTH_FT,
 } from '../src/config.js';
 import {
-  money, grouped, RNOV, MEMOS, MILESTONES, reachedCount, findQuip,
+  money, grouped, findQuip,
 } from '../src/teksti.js';
 import { World, KIND, kindOf, variantOf, pack, EMPTY, rowDepth } from '../src/sim/world.js';
 import { makeRng, hash2 } from '../src/sim/rng.js';
@@ -1009,35 +1012,6 @@ test('money is in euros and grouped the Slovenian way', () => {
   assert.equal(grouped(12800), '12.800');
 });
 
-test('the branding is the agency it says it is', () => {
-  assert.equal(RNOV.short, 'RNOV');
-  assert.equal(RNOV.full, 'Razvoj in nadzor oskrbovalne verige');
-});
-
-test('the RNOV memos are in order and the last one is reachable', () => {
-  // `reachedCount` is what stops a memo firing twice, and it only works because
-  // the thresholds are sorted and strictly increasing: an out-of-order entry
-  // would count as already passed before the player got there.
-  for (let i = 1; i < MEMOS.length; i += 1) {
-    assert.ok(MEMOS[i].at > MEMOS[i - 1].at, `memo ${i} is out of order`);
-  }
-  assert.equal(reachedCount(MEMOS, 0), 0, 'a memo fired before the run started');
-  assert.equal(reachedCount(MEMOS, MEMOS[0].at), 1, 'the first memo does not fire at its own depth');
-  assert.equal(reachedCount(MEMOS, 1e9), MEMOS.length);
-  assert.ok(
-    MEMOS[MEMOS.length - 1].at < DEPTH_FT,
-    'the deepest memo is below the bottom of the mine, so nobody would ever read it',
-  );
-});
-
-test('the dug-tile milestones are in order and all reachable', () => {
-  for (let i = 1; i < MILESTONES.length; i += 1) {
-    assert.ok(MILESTONES[i].at > MILESTONES[i - 1].at, `milestone ${i} is out of order`);
-  }
-  assert.equal(reachedCount(MILESTONES, 0), 0);
-  assert.equal(reachedCount(MILESTONES, 1e9), MILESTONES.length);
-});
-
 test('the deep ores have a joke and the cheap ones stay quiet', () => {
   // The quips double as the "this was worth the trip" signal, so an ore with no
   // quip says nothing on pickup - which is what stops the surface from burying
@@ -1070,9 +1044,40 @@ test('nothing player-facing is blank or still in dollars', () => {
     check(`facility ${facility.key} name`, facility.name);
     check(`facility ${facility.key} note`, facility.note);
   }
-  for (const memo of MEMOS) check('memo', memo.text);
-  for (const milestone of MILESTONES) check('milestone', milestone.text);
 });
+test('the agency branding is gone from every shipped file', () => {
+  /**
+   * This reads the files rather than the DOM, because the branding hid in places
+   * no screen-level check can reach: the tab title, the meta description and the
+   * noscript heading in `index.html`. All three survived the first sweep of the
+   * UI precisely because they are invisible on the title screen.
+   *
+   * Only shipped files are scanned. `tools/` and `tests/` are excluded because
+   * the guard has to name the string it is looking for, and a check that fails
+   * on itself is worse than no check.
+   */
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const inDir = (dir) => readdirSync(path.join(root, dir))
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => `${dir}/${f}`);
+  const files = [
+    'index.html',
+    'README.md',
+    'styles/game.css',
+    ...inDir('src'),
+    ...inDir('src/sim'),
+    ...inDir('src/render'),
+  ];
+  assert.ok(files.length > 10, 'the scan found almost no files to check');
+  for (const rel of files) {
+    const text = readFileSync(path.join(root, rel), 'utf8');
+    assert.ok(
+      !/RNOV|Razvoj in nadzor/.test(text),
+      `${rel} still carries the agency branding`,
+    );
+  }
+});
+
 
 /* ------------------------------------------------------------------ */
 console.log('\n--- balance sanity ---');

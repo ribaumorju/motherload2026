@@ -44,6 +44,7 @@
       } from '../src/render/fx.js';
       import { createHud } from '../src/hud.js';
       import { ROWS, SKY_ROWS, TILE, ORES, COLS } from '../src/config.js';
+      import { money } from '../src/teksti.js';
 
       const atlas = buildAtlas();
 
@@ -128,7 +129,10 @@
         const hud = createHud(app);
         hud.update(state, { lowFuel: state.ship.fuel < 6, lowHull: state.ship.hull < 4 });
         if (state.cargoWeight > 0) {
-          hud.toast(`Found ${ORES[Math.min(ORES.length - 1, Math.floor(state.depth / 2000))].name}`, 'gold', 99999);
+          // The same wording the game uses on a find, so the sheet shows what a
+          // player actually sees rather than a paraphrase of it.
+          const ore = ORES[Math.min(ORES.length - 1, Math.floor(state.depth / 2000))];
+          hud.toast(`${ore.name}, ${money(ore.value)} na kvadrat.`, 'gold', 99999);
         }
         return { state, hud };
       }
@@ -137,7 +141,7 @@
 
       // The captions end up in the published sheet, so they are in Slovenian
       // like the game rather than in the language of the person editing this.
-      stage('POVRŠJE - trije RNOV objekti, sonce nizko', { row: SKY_ROWS, seconds: 1, width: 1200, height: 560, wide: true });
+      stage('POVRŠJE - trije objekti, sonce nizko', { row: SKY_ROWS, seconds: 1, width: 1200, height: 560, wide: true });
       stage('KOPANJE - 300 ft, železit in bronzit', { row: 12, seconds: 5, input: { drill: 1 } });
       stage('SREDINA - 4.200 ft, platinovec in plin', { row: 133, seconds: 6, input: { drill: 1 }, seed: 21 });
       stage('GLOBINA - 9.000 ft, smaragd in rubin', { row: 283, seconds: 6, input: { drill: 1 }, seed: 44 });
